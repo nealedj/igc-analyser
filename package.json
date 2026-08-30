@@ -1,0 +1,28 @@
+{
+  "name": "igc-analyser",
+  "version": "0.1.0",
+  "description": "Browser-based glider flight log (IGC) analyser: phases, climbs, circle geometry, wind and cruise-leg energy balance. Runs entirely client-side.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nealedj/igc-analyser.git"
+  },
+  "exports": {
+    ".": "./src/core/index.ts"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "analyse": "node --experimental-strip-types src/cli.ts",
+    "make-fixtures": "node --experimental-strip-types test/tools/make-fixtures.ts",
+    "verify-fixtures": "node --experimental-strip-types test/tools/verify-fixtures.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
