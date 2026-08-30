@@ -18,10 +18,12 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types test/*.test.ts",
     "analyse": "node --experimental-strip-types src/cli.ts",
+    "make-traces": "node --experimental-strip-types test/tools/make-traces.ts",
     "make-fixtures": "node --experimental-strip-types test/tools/make-fixtures.ts",
     "verify-fixtures": "node --experimental-strip-types test/tools/verify-fixtures.ts"
   },
   "devDependencies": {
+    "@types/node": "^22.20.1",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   }
