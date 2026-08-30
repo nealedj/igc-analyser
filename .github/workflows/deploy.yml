@@ -55,7 +55,30 @@ jobs:
       - name: SPA fallback
         run: cp dist/index.html dist/404.html
 
+      # A built page references a hashed bundle under the base path and never
+      # the TypeScript entry point. Getting this wrong publishes a blank page
+      # that looks like a successful deploy, so fail here instead.
+      - name: Check the build is a built page
+        run: |
+          set -euo pipefail
+          if grep -q 'src/main.ts' dist/index.html; then
+            echo "::error::dist/index.html still points at the TypeScript source."
+            exit 1
+          fi
+          if ! grep -q '/igc-analyser/assets/.*\.js' dist/index.html; then
+            echo "::error::dist/index.html has no bundle at the expected base path."
+            grep -o '<script[^>]*>' dist/index.html || true
+            exit 1
+          fi
+          echo "dist/index.html references $(grep -o '/igc-analyser/assets/[^"]*\.js' dist/index.html)"
+
+      # enablement: true lets this switch Pages to the Actions source itself.
+      # Without it, a repository whose Pages source is still "Deploy from a
+      # branch" fails here after a green build - and, worse, keeps quietly
+      # serving the repository root, so the site looks deployed and is blank.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:

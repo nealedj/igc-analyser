@@ -127,6 +127,14 @@ Pushes to `main` build and publish to GitHub Pages via
 One-time setup, in the repository settings: **Pages → Build and deployment →
 Source: GitHub Actions**. Nothing else; no DNS, no branch to create.
 
+The workflow passes `enablement: true` to `actions/configure-pages`, so it can
+also make that switch itself on a repository where Pages has never been set up.
+If the source is left as **Deploy from a branch**, GitHub's own branch builder
+publishes the repository root instead — which serves the unbuilt `index.html`,
+whose only script tag points at `src/main.ts`. The browser will not execute
+TypeScript, so the result is a blank page from a deploy that looked like it
+succeeded. The workflow now fails loudly rather than letting that ship.
+
 To move it to a custom domain later, set `BASE_PATH: /` in the workflow, add a
 step writing the domain to `dist/CNAME`, and point a DNS `CNAME` record at the
 Pages host. No source change is needed either way — that is what the
