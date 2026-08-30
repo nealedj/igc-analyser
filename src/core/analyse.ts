@@ -11,6 +11,15 @@ import { chooseAltitude, parseIgc } from './parse.ts';
 import { addKinematics } from './kinematics.ts';
 import { segment } from './segment.ts';
 import { findLaunch } from './launch.ts';
+import { bestWindow, circleStats, perCircle } from './climbs.ts';
+import type { CircleStats, PerCircle } from './climbs.ts';
+import { estimateWind } from './wind.ts';
+import type { Wind } from './wind.ts';
+import { analyseLeg } from './legs.ts';
+import type { Leg } from './legs.ts';
+import { loadPolar } from './polar.ts';
+import type { LoadPolarOptions, PolarDb } from './polar.ts';
+import polarsDb from '../data/polars.json' with { type: 'json' };
 import { median, pyRound } from './pyutil.ts';
 
 export interface AnalyseOptions {
@@ -18,6 +27,10 @@ export interface AnalyseOptions {
   minCircleRate?: number;
   /** Release time override, seconds since midnight UTC. */
   releaseTime?: number;
+  /** Force or disable the polar, or supply a custom one. */
+  polar?: LoadPolarOptions;
+  /** Override the polar database. Defaults to the bundled one. */
+  polarDb?: PolarDb;
 }
 
 export interface ProfilePoint {
@@ -41,6 +54,12 @@ export interface TraceQuality {
   coarse: boolean;
 }
 
+/** A climb: circle geometry, its best sustained 30 s, and each 360 in it. */
+export interface Climb extends CircleStats {
+  best_30s_ms: number | null;
+  per_circle: PerCircle[];
+}
+
 export interface Result {
   header: Header;
   warnings: string[];
@@ -55,6 +74,29 @@ export interface Result {
   };
   track_distance_m: number;
   task: TaskPoint[];
+  phase: {
+    circling_s: number;
+    soaring_s: number;
+    gain_circling_m: number;
+    /** Not in the oracle's JSON; it prints these as text. */
+    straight_s: number;
+    circling_fraction: number;
+    mean_circling_rate_ms: number | null;
+    working_band: { bottom_m: number; top_m: number } | null;
+  };
+  wind: Wind | null;
+  climbs: Climb[];
+  legs: Leg[];
+  /** Which polar was used and on what evidence. Not in the oracle's JSON. */
+  polar: {
+    name: string | null;
+    note: string;
+    matched: boolean;
+    best_ld: number | null;
+    best_ld_speed_ms: number | null;
+  };
+  /** Fraction of straight flight spent in rising air, circuit legs excluded. */
+  rising_air_fraction: number | null;
   profile: ProfilePoint[];
   /** Not in the oracle's JSON; the oracle prints the same figures as text. */
   trace: {
@@ -116,6 +158,55 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
 
   const medianInterval = dts.length ? median(dts) : 0;
 
+  // ------------------------------------------------------ climbs and phases
+  // Only circling after release counts: the tow is not a climb the pilot flew.
+  const relT = F[release].t;
+  const climbRuns = rs.filter(
+    (r) => r.circ && F[r.a].t >= relT && F[r.b].alt - F[r.a].alt > 0 && F[r.b].t - F[r.a].t >= 30,
+  );
+  const wind = estimateWind(F, climbRuns);
+  const windVec = wind ? wind.vector : null;
+
+  const climbs: Climb[] = climbRuns.map((r) => ({
+    ...circleStats(F, r.a, r.b, windVec),
+    best_30s_ms: bestWindow(F, r.a, r.b),
+    per_circle: perCircle(F, r.a, r.b),
+  }));
+
+  let circlingS = 0;
+  for (const r of rs) if (r.circ && F[r.a].t >= relT) circlingS += F[r.b].t - F[r.a].t;
+  const soaringS = Math.max(1, F[F.length - 1].t - relT);
+  const gainCircling = climbRuns.reduce((acc, r) => acc + (F[r.b].alt - F[r.a].alt), 0);
+
+  const workingBand = climbs.length
+    ? {
+        bottom_m: Math.min(...climbRuns.map((r) => F[r.a].alt)),
+        top_m: Math.max(...climbRuns.map((r) => F[r.b].alt)),
+      }
+    : null;
+
+  // ------------------------------------------------------------ cruise legs
+  const match = loadPolar((opts.polarDb ?? (polarsDb as PolarDb)), header.glider_type, opts.polar ?? {});
+  const bestLd = match.polar ? match.polar.bestLd() : null;
+
+  const legRuns = rs.filter((r) => !r.circ && F[r.a].t >= relT && F[r.b].t - F[r.a].t >= 60);
+  const landAlt = F[F.length - 1].alt;
+  const legs: Leg[] = legRuns.map((r) => {
+    const leg = analyseLeg(F, r.a, r.b, match.polar, windVec);
+    leg.circuit = landed && F[r.b].alt < landAlt + 250;
+    return leg;
+  });
+
+  // Circuit legs are excluded: a descending circuit is not a comment on the day.
+  let upT = 0;
+  let totT = 0;
+  for (const leg of legs) {
+    if (leg.frac_rising_air !== undefined && !leg.circuit) {
+      upT += leg.frac_rising_air * leg.sampled_s!;
+      totT += leg.sampled_s!;
+    }
+  }
+
   const result: Result = {
     header,
     warnings,
@@ -129,6 +220,26 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
     },
     track_distance_m: dist,
     task,
+    phase: {
+      circling_s: circlingS,
+      soaring_s: soaringS,
+      gain_circling_m: gainCircling,
+      straight_s: soaringS - circlingS,
+      circling_fraction: circlingS / soaringS,
+      mean_circling_rate_ms: circlingS ? gainCircling / circlingS : null,
+      working_band: workingBand,
+    },
+    wind,
+    climbs,
+    legs,
+    polar: {
+      name: match.polar ? match.polar.name : null,
+      note: match.note,
+      matched: match.matched,
+      best_ld: bestLd ? bestLd.ld : null,
+      best_ld_speed_ms: bestLd ? bestLd.speed : null,
+    },
+    rising_air_fraction: totT ? upT / totT : null,
     profile: F.map((f) => ({
       t: f.t,
       alt_m: f.alt,

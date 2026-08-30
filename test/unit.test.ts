@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { dm, parseB, parseIgc, chooseAltitude } from '../src/core/parse.ts';
 import { wrap, addKinematics } from '../src/core/kinematics.ts';
 import { mean, median, pstdev, pyFixed, pyMod, pyRound } from '../src/core/pyutil.ts';
+import { Polar, loadPolar, sigma, solve3 } from '../src/core/polar.ts';
 
 // ------------------------------------------------ DDMMmmm coordinate parsing
 
@@ -211,4 +212,108 @@ test('mean, median and pstdev match the statistics module', () => {
 
 test('an empty file is rejected rather than analysed', () => {
   assert.throws(() => parseIgc('HFDTE010123\r\n'), /no usable B records/);
+});
+
+// ------------------------------------------------------- the quadratic polar
+
+test('the polar passes exactly through its three defining points', () => {
+  const points: number[][] = [
+    [95, 0.54],
+    [115, 0.6],
+    [170, 1.32],
+  ];
+  const p = new Polar('ASW 27', points);
+  for (const [kmh, sink] of points) {
+    assert.ok(Math.abs(p.sink(kmh / 3.6) - sink) < 1e-12, `off at ${kmh} km/h`);
+  }
+});
+
+test('the polar is convex, so it has a genuine best glide', () => {
+  const p = new Polar('ASW 27', [[95, 0.54], [115, 0.6], [170, 1.32]]);
+  assert.ok(p.c > 0, 'quadratic term should be positive');
+  const { ld, speed } = p.bestLd();
+  // A 15m glass single-seater: somewhere near 40:1 in the 90-110 km/h band.
+  assert.ok(ld > 30 && ld < 55, `implausible best L/D ${ld}`);
+  assert.ok(speed !== null && speed * 3.6 > 80 && speed * 3.6 < 130, `at ${speed! * 3.6} km/h`);
+});
+
+test('best glide really is the tangent point, not just a sampled maximum', () => {
+  const p = new Polar('ASW 27', [[95, 0.54], [115, 0.6], [170, 1.32]]);
+  const { ld, speed } = p.bestLd();
+  for (const v of [speed! - 5, speed! - 1, speed! + 1, speed! + 5]) {
+    assert.ok(v / p.sink(v) <= ld + 1e-9, `${v} m/s beats the reported best`);
+  }
+});
+
+test('solve3 pivots rather than dividing by a zero leading coefficient', () => {
+  // First row has a zero in the first column: needs a row swap to proceed.
+  const x = solve3([[0, 1, 1], [1, 2, 3], [2, 1, 1]], [3, 6, 4]);
+  const A = [[0, 1, 1], [1, 2, 3], [2, 1, 1]];
+  const y = [3, 6, 4];
+  A.forEach((row, i) => {
+    const got = row[0] * x[0] + row[1] * x[1] + row[2] * x[2];
+    assert.ok(Math.abs(got - y[i]) < 1e-9, `row ${i}: ${got} != ${y[i]}`);
+  });
+});
+
+test('solve3 refuses a degenerate system instead of returning nonsense', () => {
+  assert.throws(() => solve3([[1, 1, 1], [2, 2, 2], [3, 3, 3]], [1, 2, 3]));
+});
+
+test('a polar needs exactly three points', () => {
+  assert.throws(() => new Polar('bad', [[95, 0.54], [115, 0.6]]));
+});
+
+// -------------------------------------------------------------- polar matching
+
+const DB = {
+  gliders: [
+    { name: 'ASK 21', match: ['ask21', 'ask 21', 'k-21', 'k21'], points: [[80, 0.7], [100, 0.83], [140, 1.6]] },
+    { name: 'ASW 27', match: ['asw27', 'asw 27'], points: [[95, 0.54], [115, 0.6], [170, 1.32]] },
+  ],
+  default: { name: 'generic 38:1 glass single-seater', points: [[85, 0.63], [105, 0.75], [150, 1.6]] },
+};
+
+test('the glider-type header is matched ignoring spaces and hyphens', () => {
+  for (const t of ['ASK-21', 'ask 21', 'Schleicher ASK21 Mi', 'K-21']) {
+    const m = loadPolar(DB, t);
+    assert.equal(m.polar?.name, 'ASK 21', `failed to match ${t}`);
+    assert.equal(m.matched, true);
+  }
+});
+
+test('an unrecognised glider falls back to the generic, and says so', () => {
+  const m = loadPolar(DB, 'Slingsby T21');
+  assert.equal(m.polar?.name, 'generic 38:1 glass single-seater');
+  assert.equal(m.matched, false);
+  assert.match(m.note, /indicative only/);
+});
+
+test('a missing glider type still yields a usable polar and a warning', () => {
+  const m = loadPolar(DB, undefined);
+  assert.equal(m.matched, false);
+  assert.ok(m.polar);
+});
+
+test('the polar can be forced, and disabled entirely', () => {
+  assert.equal(loadPolar(DB, 'ASK 21', { force: 'asw27' }).polar?.name, 'ASW 27');
+  const off = loadPolar(DB, 'ASK 21', { force: 'none' });
+  assert.equal(off.polar, null);
+  assert.equal(off.matched, false);
+});
+
+// ------------------------------------------------------------ density altitude
+
+test('sigma falls with height across the range a glider can reach', () => {
+  assert.ok(Math.abs(sigma(0) - 1) < 1e-12);
+  assert.ok(sigma(3000) < sigma(1000) && sigma(1000) < sigma(0));
+  // Wave heights: still well inside the fit.
+  assert.ok(sigma(10000) > 0.3 && sigma(10000) < 0.4);
+});
+
+test('sigma returns the floor rather than NaN outside the fit', () => {
+  // Above ~44,330 m the base goes negative. Unreachable in a glider, but a
+  // NaN here would spread through every airmass figure without a word.
+  assert.equal(sigma(1e6), 0.3);
+  assert.ok(Number.isFinite(sigma(50000)));
 });

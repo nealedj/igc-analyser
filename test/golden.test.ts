@@ -29,6 +29,11 @@ const COVERED = [
   'track_distance_m',
   'task',
   'profile',
+  // Phase 2: climbs, per-circle breakdown, wind, polar and cruise legs.
+  'phase',
+  'wind',
+  'climbs',
+  'legs',
 ];
 
 const cases = fixtures();

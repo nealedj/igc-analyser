@@ -127,5 +127,11 @@ Faithfully reproduced, including where it is arguably arguable:
 - **`statistics.median` on the wind-corrected airspeeds** rather than a mean.
 - **Polar matching by substring** against the glider-type header, and the
   fallback to a generic 38:1 glass single-seater.
+- **Density altitude out of range.** `sigma()` clamps its base at zero, so
+  above about 44,330 m it returns the 0.3 floor. The oracle raises a
+  `TypeError` there (Python gives a complex number for a fractional power of a
+  negative), and a bare port would return `NaN` and quietly poison every
+  airmass figure downstream. No fixture reaches it and no glider can; it is
+  noted only so the clamp is not mistaken for a silent behaviour change.
 - **Python's round-half-even** in `round(lat, 5)` for the profile coordinates,
   and in the `%.0f` formatting inside the launch note. See `src/core/pyutil.ts`.
