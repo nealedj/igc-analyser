@@ -14,12 +14,104 @@ export function pyMod(a: number, b: number): number {
   return r !== 0 && r < 0 !== b < 0 ? r + b : r;
 }
 
-/** `statistics.mean`. Throws on an empty sequence, as Python does. */
+/**
+ * `statistics.mean`.
+ *
+ * CPython does not sum in floating point: `statistics._sum` accumulates exact
+ * `Fraction`s and rounds once, at the end. Summing left to right in `double`
+ * instead lands a unit in the last place away from it often enough to matter,
+ * and it matters here because the mean feeds two discrete thresholds - the
+ * `|turn rate| > 6 deg/s` that decides whether a fix is circling, and the
+ * projection origin that every heading is ultimately derived from. One ulp
+ * there moves a phase boundary by a whole fix, and the difference cascades
+ * through the climb table.
+ *
+ * So this is exact too: every double is a dyadic rational, the sum of them is
+ * computed in BigInt without loss, and the division by `n` is rounded once.
+ */
 export function mean(xs: readonly number[]): number {
   if (xs.length === 0) throw new Error('mean requires at least one data point');
-  let s = 0;
-  for (const x of xs) s += x;
-  return s / xs.length;
+  if (xs.length === 1) return xs[0];
+
+  let minExp = Infinity;
+  const parts: { m: bigint; e: number }[] = [];
+  for (const x of xs) {
+    if (!Number.isFinite(x)) {
+      // Match the float path rather than inventing an exact answer for NaN.
+      let s = 0;
+      for (const v of xs) s += v;
+      return s / xs.length;
+    }
+    const d = decompose(x);
+    parts.push(d);
+    if (d.e < minExp) minExp = d.e;
+  }
+
+  let total = 0n;
+  for (const { m, e } of parts) total += m << BigInt(e - minExp);
+
+  // mean = (total * 2^minExp) / n
+  let num = total;
+  let den = BigInt(xs.length);
+  if (minExp >= 0) num <<= BigInt(minExp);
+  else den <<= BigInt(-minExp);
+  return ratioToDouble(num, den);
+}
+
+/** Split a finite double into `m * 2^e` exactly, with `m` signed. */
+function decompose(x: number): { m: bigint; e: number } {
+  if (x === 0) return { m: 0n, e: 0 };
+  const buf = new DataView(new ArrayBuffer(8));
+  buf.setFloat64(0, x);
+  const bits = buf.getBigUint64(0);
+  const neg = (bits >> 63n) === 1n;
+  const expBits = Number((bits >> 52n) & 0x7ffn);
+  const mantBits = bits & 0xfffffffffffffn;
+  const m = expBits === 0 ? mantBits : mantBits | 0x10000000000000n;
+  const e = (expBits === 0 ? 1 : expBits) - 1075;
+  return { m: neg ? -m : m, e };
+}
+
+const bitLength = (b: bigint): number => b.toString(2).length;
+
+/** The nearest double to `num / den`, ties to even. `den` must be positive. */
+function ratioToDouble(num: bigint, den: bigint): number {
+  if (num === 0n) return 0;
+  const neg = num < 0n;
+  let n = neg ? -num : num;
+  let d = den;
+
+  // Aim for a 54-bit quotient, so there is a guard bit below the 53 kept.
+  const approx = bitLength(n) - bitLength(d);
+  const shift = 54 - approx;
+  if (shift > 0) n <<= BigInt(shift);
+  else if (shift < 0) d <<= BigInt(-shift);
+
+  let q = n / d;
+  const rem = n % d;
+
+  const drop = bitLength(q) - 53;
+  let exp = -shift;
+  if (drop > 0) {
+    const mask = (1n << BigInt(drop)) - 1n;
+    const dropped = q & mask;
+    const half = 1n << BigInt(drop - 1);
+    q >>= BigInt(drop);
+    exp += drop;
+    const above = dropped > half || (dropped === half && rem !== 0n);
+    const tie = dropped === half && rem === 0n;
+    if (above || (tie && (q & 1n) === 1n)) q += 1n;
+    if (bitLength(q) > 53) {
+      q >>= 1n;
+      exp += 1;
+    }
+  }
+
+  const out = Number(q) * 2 ** exp;
+  // Overflow or underflow to a subnormal: the exact path has nothing to add,
+  // and no figure in this analysis lives out there anyway.
+  const val = Number.isFinite(out) && (out !== 0 || q === 0n) ? out : Number(num) / Number(den);
+  return neg ? -val : val;
 }
 
 /** `statistics.median`: middle value, or the mean of the two middle values. */
@@ -31,6 +123,14 @@ export function median(xs: readonly number[]): number {
 }
 
 /** `statistics.pstdev`: population standard deviation. */
+/**
+ * `statistics.pstdev`: population standard deviation.
+ *
+ * The mean it centres on is exact, as above. The sum of squares is not - the
+ * oracle keeps that exact too - so this can sit a unit in the last place away
+ * from CPython. It only ever reaches a continuous output (`sd_ias_kmh`), never
+ * a threshold, so the golden comparison's float tolerance covers it.
+ */
 export function pstdev(xs: readonly number[]): number {
   if (xs.length === 0) throw new Error('pstdev requires at least one data point');
   const m = mean(xs);
@@ -147,5 +247,19 @@ export class ValueError extends Error {
   override name = 'ValueError';
 }
 
-export const degrees = (rad: number): number => (rad * 180) / Math.PI;
-export const radians = (deg: number): number => (deg * Math.PI) / 180;
+/*
+ * CPython precomputes these constants and multiplies once:
+ *
+ *   static const double degToRad = Py_MATH_PI / 180.0;
+ *   static const double radToDeg = 180.0 / Py_MATH_PI;
+ *
+ * `x * (180/pi)` and `(x * 180) / pi` are not the same double. The difference
+ * is one unit in the last place, which is invisible in every continuous figure
+ * here and decisive in `perCircle`, where an accumulated heading is tested
+ * against exactly 360 and a single ulp moves a circle boundary by a whole fix.
+ */
+const RAD_TO_DEG = 180.0 / Math.PI;
+const DEG_TO_RAD = Math.PI / 180.0;
+
+export const degrees = (rad: number): number => rad * RAD_TO_DEG;
+export const radians = (deg: number): number => deg * DEG_TO_RAD;

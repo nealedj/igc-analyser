@@ -20,7 +20,9 @@
     "analyse": "node --experimental-strip-types src/cli.ts",
     "make-traces": "node --experimental-strip-types test/tools/make-traces.ts",
     "make-fixtures": "node --experimental-strip-types test/tools/make-fixtures.ts",
-    "verify-fixtures": "node --experimental-strip-types test/tools/verify-fixtures.ts"
+    "verify-fixtures": "node --experimental-strip-types test/tools/verify-fixtures.ts",
+    "check-core": "node --experimental-strip-types test/tools/check-core.ts",
+    "screenshot": "node test/tools/screenshot.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

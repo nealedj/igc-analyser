@@ -210,6 +210,40 @@ test('mean, median and pstdev match the statistics module', () => {
   assert.equal(pstdev([2, 4, 4, 4, 5, 5, 7, 9]), 2);
 });
 
+test('mean is bit-exact where float summation is not', () => {
+  // Latitude-shaped values where summing left to right in double lands one
+  // unit in the last place away from statistics.mean. Expected values are
+  // CPython's. The circling threshold is decided on a mean of turn rates, so
+  // one ulp here can move a phase boundary by a whole fix.
+  const cases: [number[], number][] = [
+    [[25.154975147299, 31.643549611924, 40.613727988597, 2.176790092607, 13.687069444349,
+      1.986879562051, 41.530449390195, 35.139116539768, -0.696581499658], 21.248441808570224],
+    [[50.061677961906, 32.965739344361, 30.855948751821, 5.662175232709, -2.174959467772,
+      26.060969639376], 23.90525857706683],
+    [[-1.039097074706, 45.376073489389, 29.978994672407], 24.771990362363333],
+    [[2.935980357394, 2.929170784072, 12.999659122961, 0.67545789251, -2.07102401106,
+      34.669361122176, 8.742592316378, 47.987318158634, -0.122257420053], 12.082917591445778],
+    [[50.919741764586, 18.85834134436, 1.017108910853, 31.620020172871, 39.818097227216,
+      11.837657276758], 25.678494449440667],
+    [[51.884704527762, -1.920310984633, 7.301904839911, 51.770964622428, 30.111017236866],
+      27.8296560484668],
+  ];
+  for (const [xs, expected] of cases) {
+    assert.equal(mean(xs), expected, `mean(${xs.slice(0, 3)}...)`);
+    // And confirm each case really is one the naive route gets wrong, so this
+    // test cannot quietly stop testing anything.
+    const naive = xs.reduce((a, b) => a + b, 0) / xs.length;
+    assert.notEqual(naive, expected, 'case no longer distinguishes the two routes');
+  }
+});
+
+test('mean handles the textbook cancellation cases', () => {
+  // Summing left to right loses the 1.0 entirely and returns 0.
+  assert.equal(mean([1e16, 1.0, -1e16]), 0.3333333333333333);
+  // And the classic: the naive route gives 0.20000000000000004.
+  assert.equal(mean([0.1, 0.2, 0.3]), 0.2);
+});
+
 test('an empty file is rejected rather than analysed', () => {
   assert.throws(() => parseIgc('HFDTE010123\r\n'), /no usable B records/);
 });

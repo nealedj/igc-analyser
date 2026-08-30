@@ -1,0 +1,74 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it half-published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Fixtures still match the vendored oracle
+        run: npm run verify-fixtures
+
+      # Served from a custom domain at the root, so base stays '/'. Deploying
+      # to a project subpath instead is BASE_PATH=/igc-analyser/ and dropping
+      # the CNAME step; nothing in the source needs to change either way.
+      - name: Build
+        run: npm run build
+        env:
+          BASE_PATH: /
+
+      - name: Custom domain
+        run: echo 'igc.neale.dev' > dist/CNAME
+
+      # No server-side routing, but a 404 that loads the app keeps a mistyped
+      # deep link from being a dead end.
+      - name: SPA fallback
+        run: cp dist/index.html dist/404.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

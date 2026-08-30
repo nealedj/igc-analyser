@@ -84,12 +84,14 @@ class Flight {
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * this.rand());
   }
 
-  private step(dt: number, tas: number, climb: number, turn: number): void {
+  private step(dt: number, tas: number, climb: number, turn: number, airborne = true): void {
     this.hdg = (this.hdg + turn * dt) % 360;
     const h = this.hdg * D2R;
     // Air velocity in (east, north), plus the wind the air itself carries.
-    const vx = Math.sin(h) * tas + this.o.wind[0];
-    const vy = Math.cos(h) * tas + this.o.wind[1];
+    // A glider on the ground does not drift with it, which matters: take-off
+    // is detected on ground speed, and a windy day would fake one.
+    const vx = Math.sin(h) * tas + (airborne ? this.o.wind[0] : 0);
+    const vy = Math.cos(h) * tas + (airborne ? this.o.wind[1] : 0);
     this.lat += ((vy * dt) / R) / D2R;
     this.lon += ((vx * dt) / (R * Math.cos(this.lat * D2R))) / D2R;
     this.alt += climb * dt;
@@ -109,9 +111,47 @@ class Flight {
     });
   }
 
-  /** Sit still on the ground. */
+  /** Sit still on the ground. Jitter is cut right down: a stationary
+   *  receiver must not read fast enough to look like a take-off. */
   ground(dur: number): this {
-    for (let s = 0; s < dur; s += this.o.interval) this.step(this.o.interval, 0, 0, 0);
+    const n = this.o.noise;
+    this.o = { ...this.o, noise: n / 8 };
+    for (let s = 0; s < dur; s += this.o.interval) this.step(this.o.interval, 0, 0, 0, false);
+    this.o = { ...this.o, noise: n };
+    return this;
+  }
+
+  /** Circle until reaching a target altitude, so flights stay in a band. */
+  circleTo(targetAlt: number, climb: number, turn: number, tas: number): this {
+    let guard = 0;
+    while (this.alt < targetAlt && guard++ < 4000) {
+      const c = climb * (0.75 + 0.5 * this.rand());
+      this.step(this.o.interval, tas, c, turn + (this.rand() - 0.5) * 1.5);
+    }
+    return this;
+  }
+
+  /** Glide on a heading until down to a target altitude. */
+  glideTo(targetAlt: number, hdg: number, tas: number, sink: number): this {
+    this.hdg = hdg;
+    let guard = 0;
+    while (this.alt > targetAlt && guard++ < 6000) {
+      const wander = (this.rand() - 0.5) * 1.2;
+      this.step(this.o.interval, tas + (this.rand() - 0.5) * 4, sink, wander);
+    }
+    return this;
+  }
+
+  /** A circuit and landing, so the trace ends on the ground like a real one. */
+  land(hdg: number): this {
+    const g = this.o.groundAlt;
+    this.glideTo(g + 200, hdg, 26, -1.6);
+    this.glideTo(g + 120, (hdg + 90) % 360, 26, -1.5);
+    this.glideTo(g + 5, (hdg + 180) % 360, 25, -1.4);
+    this.alt = g;
+    // Roll out and stop.
+    for (let v = 22; v > 0; v -= 3) this.step(this.o.interval, v, 0, 0, false);
+    this.ground(40);
     return this;
   }
 
@@ -252,17 +292,19 @@ const traces: Record<string, () => string> = {
         { name: 'ASTON DOWN', lat: 51.7, lon: -1.9 },
       ],
     });
+    // Aerotow to 600 m, then eight climbs worked between 700 m and 1500 m:
+    // a good but ordinary UK summer day, ending with a landing.
     f.ground(90).tow(230, 2.4, 30);
-    const climbs = [
-      [190, 2.1, 18], [240, 3.0, 20], [170, 1.6, 16], [300, 3.6, 21],
-      [210, 2.4, 19], [260, 3.2, 20], [150, 1.4, 15], [280, 2.8, 18],
+    const climbs: [number, number, number][] = [
+      [1350, 1.6, 18], [1500, 2.2, 20], [1250, 1.2, 16], [1550, 2.6, 21],
+      [1400, 1.8, 19], [1500, 2.4, 20], [1150, 1.1, 15], [1450, 2.1, 18],
     ];
     const heads = [35, 60, 25, 200, 215, 190, 240, 210];
     climbs.forEach((c, i) => {
-      f.circle(c[0], c[1], i % 2 ? c[2] : -c[2], 28);
-      f.cruise(200 + i * 20, heads[i], 33, -0.9);
+      f.circleTo(c[0], c[1], i % 2 ? c[2] : -c[2], 28);
+      f.glideTo(i === climbs.length - 1 ? 1000 : 850 + (i % 3) * 60, heads[i], 33, -1.8);
     });
-    f.cruise(240, 200, 30, -1.1).circle(60, 0.4, 16, 27).cruise(300, 200, 28, -1.3);
+    f.land(200);
     return f.build();
   },
 
@@ -274,11 +316,17 @@ const traces: Record<string, () => string> = {
       startTime: 10 * 3600 + 5 * 60, lat: 52.02, lon: -3.35, groundAlt: 380,
       interval: 1, noise: 2.0,
     });
+    // Winch to 350 m above the site, then beats along the ridge that hold
+    // height, one thermal off the top, and a landing.
     f.ground(60).winch(42, 8.5);
+    // Off the wire, nose down, and a short push out to the ridge before
+    // contact. Without this the initial climb runs straight on into the beats
+    // and the launch reads as a tow.
+    f.cruise(70, 250, 32, -1.6);
     f.beat(9, 420, 20, 27);
-    f.circle(120, 1.2, 17, 26);
+    f.circleTo(1100, 1.2, 17, 26);
     f.beat(4, 380, 20, 27);
-    f.cruise(260, 200, 25, -1.0);
+    f.land(200);
     return f.build();
   },
 
@@ -287,17 +335,21 @@ const traces: Record<string, () => string> = {
     const f = new Flight({
       seed: 3, date: '211122', gliderType: 'Duo Discus', gliderId: 'G-CDUO',
       pilot: 'Fixture Pilot', crew2: 'Fixture P2', logger: 'LXNAV,LX8000',
-      wind: [-18.0, 4.0], startTime: 9 * 3600 + 30 * 60,
+      wind: [-13.0, 3.0], startTime: 9 * 3600 + 30 * 60,
       lat: 52.9, lon: -3.6, groundAlt: 200, interval: 1, noise: 2.0,
     });
+    // Tow into the rotor, contact at about 900 m, then straight climbs in the
+    // primary to 4,500 m. Almost no circling at all: that is the signature.
     f.ground(90).tow(300, 2.2, 31);
     f.cruise(180, 250, 26, -0.6);
-    f.cruise(900, 250, 24, 2.6);   // the primary
+    f.glideTo(900, 70, 28, -1.2);
+    f.cruise(780, 250, 24, 2.4);   // the primary
     f.cruise(300, 70, 30, -0.4);
-    f.cruise(780, 250, 24, 2.2);   // back into it, higher
+    f.cruise(600, 250, 24, 2.0);   // back into it, higher
     f.circle(90, 0.8, 14, 28);     // one exploratory turn
-    f.cruise(600, 250, 25, 1.4);
-    f.cruise(700, 90, 38, -2.2);   // descent and run home
+    f.cruise(420, 250, 25, 1.2);
+    f.glideTo(500, 90, 38, -2.6);  // descent and run home
+    f.land(180);
     return f.build();
   },
 
@@ -311,8 +363,7 @@ const traces: Record<string, () => string> = {
     });
     f.ground(45).winch(38, 9.0)
       .cruise(60, 180, 26, -1.2).cruise(70, 270, 26, -1.3)
-      .cruise(80, 0, 26, -1.2).cruise(60, 90, 25, -1.4)
-      .cruise(55, 180, 24, -1.6).ground(30);
+      .land(180);
     return f.build();
   },
 
@@ -327,13 +378,13 @@ const traces: Record<string, () => string> = {
     });
     f.ground(60).tow(280, 2.1, 29);
     const climbs: [number, number, number][] = [
-      [220, 1.5, 15], [180, 2.2, 17], [260, 1.2, 13], [200, 1.9, 16],
+      [900, 1.5, 15], [1050, 2.2, 17], [950, 1.2, 13], [1100, 1.9, 16],
     ];
     climbs.forEach((c, i) => {
-      f.circle(c[0], c[1], i % 2 ? c[2] : -c[2], 27);
-      f.cruise(180, [90, 180, 270, 0][i], 28, -0.9);
+      f.circleTo(c[0], c[1], i % 2 ? c[2] : -c[2], 27);
+      f.glideTo(600, [90, 180, 270, 0][i], 28, -0.9);
     });
-    f.cruise(300, 200, 27, -1.2);
+    f.land(180);
     return f.build();
   },
 
@@ -352,13 +403,13 @@ const traces: Record<string, () => string> = {
     });
     f.ground(120).tow(240, 2.3, 30);
     const climbs: [number, number, number][] = [
-      [240, 2.6, 19], [300, 3.1, 20], [200, 1.8, 16], [260, 2.9, 18],
+      [1300, 2.6, 19], [1450, 3.1, 20], [1200, 1.8, 16], [1400, 2.9, 18],
     ];
     climbs.forEach((c, i) => {
-      f.circle(c[0], c[1], i % 2 ? c[2] : -c[2], 28);
-      f.cruise(280, [45, 120, 225, 300][i], 32, -1.0);
+      f.circleTo(c[0], c[1], i % 2 ? c[2] : -c[2], 28);
+      f.glideTo(750, [45, 120, 225, 300][i], 32, -1.0);
     });
-    f.cruise(420, 200, 30, -1.2);
+    f.land(200);
     return f.build();
   },
 
@@ -375,13 +426,13 @@ const traces: Record<string, () => string> = {
     });
     f.ground(60).tow(260, 2.2, 30);
     const climbs: [number, number, number][] = [
-      [220, 2.4, 18], [280, 3.3, 20], [190, 1.7, 15],
+      [1250, 2.4, 18], [1400, 3.3, 20], [1150, 1.7, 15],
     ];
     climbs.forEach((c, i) => {
-      f.circle(c[0], c[1], i % 2 ? c[2] : -c[2], 28);
-      f.cruise(240, [70, 160, 250][i], 33, -1.0);
+      f.circleTo(c[0], c[1], i % 2 ? c[2] : -c[2], 28);
+      f.glideTo(700, [70, 160, 250][i], 33, -1.0);
     });
-    f.cruise(360, 250, 30, -1.1);
+    f.land(250);
     return f.build();
   },
 
@@ -394,8 +445,8 @@ const traces: Record<string, () => string> = {
       lat: 50.85, lon: -0.42, groundAlt: 60, interval: 1, noise: 2.0,
     });
     f.ground(45).tow(320, 2.4, 30)
-      .cruise(300, 90, 30, -0.8).circle(120, 1.0, 15, 27)
-      .cruise(400, 270, 30, -0.9).cruise(240, 180, 28, -1.1);
+      .glideTo(600, 90, 30, -0.8).circleTo(750, 1.0, 15, 27)
+      .glideTo(300, 270, 30, -0.9).land(180);
     return f.build();
   },
 };

@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Core must not depend on the DOM
+        run: npm run check-core
+
+      - name: Unit and golden tests
+        run: npm test
+
+      # The oracle is vendored, so this can run anywhere and is the thing that
+      # keeps drift between it and the port visible.
+      - name: Fixtures still match the vendored oracle
+        run: npm run verify-fixtures
+
+      - name: Build
+        run: npm run build
