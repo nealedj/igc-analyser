@@ -25,5 +25,7 @@ export type { Wind, WindEstimate } from './wind.ts';
 export { Polar, loadPolar, solve3, sigma } from './polar.ts';
 export type { PolarDb, PolarMatch, PolarPoints, LoadPolarOptions } from './polar.ts';
 export { analyseLeg } from './legs.ts';
+export { summariseTask, haversine } from './task.ts';
+export type { TaskLeg, TaskSummary } from './task.ts';
 export type { Leg } from './legs.ts';
 export type { Fix, Header, Launch, ParsedIgc, Run, TaskPoint } from './types.ts';

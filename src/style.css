@@ -338,3 +338,14 @@ details.circle-block[open] summary { color: var(--fg); margin-bottom: 0.4rem; }
 /* The trace viewBox is cut to the track, so the figure can be narrower than
    the column. Centre it rather than letting it hug the left edge. */
 .fig.trace { margin-inline: auto; }
+
+/* ----------------------------------------------------------------- export */
+
+.export-row { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; margin: 0.75rem 0 0.5rem; }
+.export-go {
+  font: inherit; font-size: 0.9rem; padding: 0.4rem 1rem; cursor: pointer;
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--accent); color: #fff;
+}
+.export-go:disabled { opacity: 0.6; cursor: default; }
+.export-status { font-size: 0.86rem; color: var(--fg-dim); font-variant-numeric: tabular-nums; }

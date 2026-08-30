@@ -20,6 +20,8 @@ import type { Leg } from './legs.ts';
 import { loadPolar } from './polar.ts';
 import type { LoadPolarOptions, PolarDb } from './polar.ts';
 import polarsDb from '../data/polars.json' with { type: 'json' };
+import { summariseTask } from './task.ts';
+import type { TaskSummary } from './task.ts';
 import { median, pyRound } from './pyutil.ts';
 
 export interface AnalyseOptions {
@@ -74,6 +76,8 @@ export interface Result {
   };
   track_distance_m: number;
   task: TaskPoint[];
+  /** Declared task distances. Not in the oracle's JSON, which stops at names. */
+  task_summary: TaskSummary | null;
   phase: {
     circling_s: number;
     soaring_s: number;
@@ -220,6 +224,7 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
     },
     track_distance_m: dist,
     task,
+    task_summary: summariseTask(task),
     phase: {
       circling_s: circlingS,
       soaring_s: soaringS,

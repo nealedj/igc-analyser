@@ -6,6 +6,8 @@ doing on the straight legs.
 
 **[igc.neale.dev](https://igc.neale.dev)**
 
+![The analyser: the data-quality panel, the flight summary, and the barogram with circling picked out](docs/screenshot.png)
+
 Everything runs client-side. The file is read with the File API and analysed in
 the tab; there is no backend, no upload and no analytics. Once the page has
 loaded it works with the network off.
@@ -72,7 +74,7 @@ The analysis is a port of a working Python implementation, vendored at
 the test oracle — nothing imports it at runtime and none of it is shipped.
 
 ```bash
-npm test               # unit tests, plus golden fixtures against the oracle
+npm test               # unit tests, export format, golden fixtures vs the oracle
 npm run verify-fixtures # regenerate from the oracle and diff (needs python3)
 npm run check-core     # core stays DOM-free and dependency-free
 ```
@@ -94,6 +96,27 @@ lies about its own extensions, and a flight across midnight.
 
 Drop your own `.igc` files into `test/golden/` and `npm run make-fixtures`
 picks them up.
+
+## The export
+
+The **Download flight page bundle** button produces a zip of `flight.json`,
+`trace.svg` and `barogram.svg`: everything on the page in a form a flight page
+can consume, so publishing a badge flight becomes a repeatable thing rather
+than a hand-built one.
+
+It is a **published file format**, specified in
+[`docs/export-format.md`](docs/export-format.md), and it is the only interface
+between this app and anything that renders a flight page. Changes to it are
+breaking and carry a `schemaVersion` bump.
+
+Every number in `flight.json` is SI, whatever units the page is showing. The
+SVGs are static, carry no scripts or external references, and take their
+colours from CSS custom properties, so a host page themes them by inlining the
+markup and setting `--igc-circling` and friends.
+
+The format also carries the caveats as data, not prose: `polar.matched`,
+`launch.releaseConfident`, `quality.coarse` and `wind.unreliable` are there so
+a consuming page can be as honest as this one is.
 
 ## Deployment
 

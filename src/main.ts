@@ -22,6 +22,7 @@ import { controls, importBar } from './ui/controls.ts';
 import { linkFigures } from './ui/interact.ts';
 import type { Span } from './ui/interact.ts';
 import { duration, hms, loadUnits } from './ui/units.ts';
+import { buildBundle, bundleName, saveBlob } from './ui/export.ts';
 
 const DB = polarsDb as PolarDb;
 
@@ -113,6 +114,8 @@ function render(): void {
     renderTables(a, tables, span, link);
   });
 
+  const exportPanel = buildExportPanel(a, { trace: trc.svg, barogram: baro.svg });
+
   results.append(
     h(
       'div',
@@ -149,6 +152,7 @@ function render(): void {
       state.colourBy === 'phase' ? phaseLegend() : climbLegend(),
     ),
     tables,
+    exportPanel,
   );
 
   renderTables(a, tables, state.selection, link);
@@ -204,6 +208,55 @@ function renderTables(
     perCirclePanel(filtered) ?? h('div', { class: 'nothing' }),
     windPanel(filtered) ?? h('div', { class: 'nothing' }),
     legTable(filtered, { onSelect }),
+  );
+}
+
+/**
+ * The export. A published file format rather than a convenience: it is the only
+ * interface between this app and anything that publishes a flight page, and it
+ * is specified in docs/export-format.md.
+ */
+function buildExportPanel(a: Analysis, figures: { trace: SVGSVGElement; barogram: SVGSVGElement }): HTMLElement {
+  const status = h('span', { class: 'export-status' });
+  const button = h('button', { type: 'button', class: 'export-go' }, 'Download flight page bundle') as HTMLButtonElement;
+
+  button.addEventListener('click', () => {
+    void (async () => {
+      button.disabled = true;
+      status.textContent = 'Building...';
+      try {
+        const blob = await buildBundle(a, figures, { filename: state.name });
+        const name = `${bundleName(a)}.zip`;
+        saveBlob(blob, name);
+        status.textContent = `${name}, ${(blob.size / 1024).toFixed(0)} kB`;
+      } catch (e) {
+        status.textContent = `Could not build the bundle: ${e instanceof Error ? e.message : String(e)}`;
+      } finally {
+        button.disabled = false;
+      }
+    })();
+  });
+
+  return h(
+    'section',
+    { class: 'panel export', 'aria-labelledby': 'export-h' },
+    h('h2', { id: 'export-h' }, 'Export'),
+    h(
+      'p',
+      { class: 'lede' },
+      'A zip containing flight.json, trace.svg and barogram.svg: everything on this ' +
+        'page in a form a flight page can consume. The SVGs are static, carry no ' +
+        'scripts or external references, and take their colours from CSS custom ' +
+        'properties so they can be themed where they are embedded. Every number in ' +
+        'flight.json is SI, whatever this page is currently showing.',
+    ),
+    h('div', { class: 'export-row' }, button, status),
+    h(
+      'p',
+      { class: 'caption' },
+      'The format is versioned and documented in docs/export-format.md. ' +
+        'It is built here in your browser, like everything else.',
+    ),
   );
 }
 
