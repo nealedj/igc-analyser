@@ -57,6 +57,46 @@ still dropped by the oracle's own `abs(lat) > 0.001` test, which the port keeps.
 
 ---
 
+## Polar matched by first key rather than longest
+
+**Fixtures affected:** `wave`
+**Fields:** `legs` (the airmass columns only)
+
+The oracle takes the first database entry whose match key appears in the
+glider-type header:
+
+```python
+for g in cand:
+    for m in g["match"]:
+        if m.replace("-", "").replace(" ", "") in t:
+            return Polar(g["name"], g["points"]), ...
+```
+
+That makes the answer depend on the order of `polars.json`. `Discus`, with the
+key `discus`, is listed before `Duo Discus`, so a Duo Discus header matches the
+single-seat Discus and the `Duo Discus` entry is unreachable for anything that
+could ever match it.
+
+It is not a small difference. The Duo is a two-seater at roughly half again the
+wing loading; using the single-seater's polar puts a systematic error into
+every airmass and rising-air figure on the flight, and the Duo Discus is one of
+the most common two-seaters in British club fleets.
+
+**What the port does instead:** the longest matching key wins, which is
+order-independent and fixes the whole class rather than this one instance.
+
+Checked against every glider type in the database and its usual header
+spellings, this changes exactly one result — `Duo Discus` and `Duo Discus XT`
+now match `Duo Discus`. `Discus 2c`, `Discus b`, `Grob Twin Astir`,
+`Astir CS 77`, `Nimbus 3DM`, `Ventus 2cxa`, `LAK-17a`, `JS1-C`, `K-21` and the
+rest are unchanged.
+
+`polars.json` itself is left byte-identical to the vendored copy. Reordering
+the file would have fixed the Duo and left the next such pair to be found by
+whoever hit it.
+
+---
+
 ## Midnight rollover defeated by sorting before unwrapping
 
 **Fixtures affected:** `midnight-rollover`

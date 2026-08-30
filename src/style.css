@@ -193,3 +193,148 @@ body {
 .legend i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
 .swatch-circling { background: var(--circling); }
 .swatch-straight { background: var(--straight); }
+
+/* --------------------------------------------------------------- controls */
+
+.controls {
+  display: flex; flex-wrap: wrap; gap: 1.25rem 1.75rem; align-items: center;
+  padding: 0.75rem 1rem; margin: var(--gap) 0;
+  background: var(--bg-sunk); border-radius: var(--radius);
+}
+.control { display: flex; align-items: center; gap: 0.55rem; }
+.control-label { font-size: 0.8rem; color: var(--fg-dim); }
+
+.seg { display: inline-flex; border: 1px solid var(--rule-strong); border-radius: var(--radius); overflow: hidden; }
+.seg button {
+  font: inherit; font-size: 0.85rem; padding: 0.2rem 0.6rem; border: 0;
+  background: var(--bg-panel); color: var(--fg-dim); cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--rule-strong); }
+.seg button:hover { color: var(--fg); }
+.seg button.on { background: var(--accent); color: #fff; }
+
+.polar-select {
+  font: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem;
+  border: 1px solid var(--rule-strong); border-radius: var(--radius);
+  background: var(--bg-panel); color: var(--fg); max-width: 16rem;
+}
+
+.file-line {
+  display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  margin-top: 1rem; font-size: 0.87rem; color: var(--fg-dim);
+}
+.file-meta { font-variant-numeric: tabular-nums; }
+
+/* ----------------------------------------------------------------- import */
+
+.import { margin-top: 0.75rem; font-size: 0.88rem; }
+.import summary { cursor: pointer; color: var(--accent); width: fit-content; }
+.import-note { color: var(--fg-dim); max-width: var(--measure); margin: 0.5rem 0; }
+.import-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.import-input {
+  font: inherit; font-size: 0.88rem; padding: 0.3rem 0.5rem; flex: 1 1 22rem;
+  border: 1px solid var(--rule-strong); border-radius: var(--radius);
+  background: var(--bg-panel); color: var(--fg);
+}
+.import-go {
+  font: inherit; font-size: 0.88rem; padding: 0.3rem 0.9rem; cursor: pointer;
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--accent); color: #fff;
+}
+.import-go:disabled { opacity: 0.6; cursor: default; }
+
+/* ----------------------------------------------------------------- tables */
+
+.table-scroll { overflow-x: auto; }
+table.data { border-collapse: collapse; width: 100%; font-size: 0.87rem; }
+table.data th, table.data td { padding: 0.3rem 0.6rem; text-align: right; white-space: nowrap; }
+table.data th:first-child, table.data td:first-child,
+table.data th:nth-child(2), table.data td:nth-child(2) { text-align: left; }
+table.data thead th {
+  border-bottom: 1px solid var(--rule-strong); color: var(--fg-faint);
+  font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;
+}
+table.data tbody tr { border-bottom: 1px solid var(--rule); }
+table.data tbody td { font-variant-numeric: tabular-nums; }
+table.data tr.clickable { cursor: pointer; }
+table.data tr.clickable:hover, table.data tr.clickable:focus-visible { background: var(--accent-soft); }
+table.data tr.muted td { color: var(--fg-faint); }
+table.compact { font-size: 0.83rem; }
+
+.caveat {
+  margin: 0 0 0.75rem; font-size: 0.86rem; color: var(--fg-dim);
+  max-width: var(--measure); border-left: 2px solid var(--rule-strong); padding-left: 0.7rem;
+}
+.circle-block { margin-top: 1rem; }
+.circle-block h3 { font-size: 0.86rem; margin: 0 0 0.35rem; color: var(--fg-dim); font-weight: 600; }
+.nothing { display: none; }
+
+.brush-note {
+  display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
+  margin: var(--gap) 0 0; padding: 0.5rem 0.85rem;
+  background: var(--accent-soft); border-radius: var(--radius); font-size: 0.87rem;
+}
+.clear-brush {
+  font: inherit; font-size: 0.83rem; padding: 0.15rem 0.6rem; cursor: pointer;
+  border: 1px solid var(--rule-strong); border-radius: var(--radius);
+  background: var(--bg-panel); color: var(--fg);
+}
+
+/* ------------------------------------------------------- trace and overlays */
+
+.trk-straight { stroke: var(--straight); stroke-width: 1.2; stroke-linejoin: round; }
+.trk-circling { stroke: var(--circling); stroke-width: 1.8; stroke-linejoin: round; }
+.trk-highlight { stroke: var(--fg); stroke-width: 2.6; stroke-linejoin: round; opacity: 0.75; }
+
+.vz-band-0 { stroke: #6b1f1f; stroke-width: 1.3; }
+.vz-band-1 { stroke: #b4534b; stroke-width: 1.3; }
+.vz-band-2 { stroke: #d9a441; stroke-width: 1.3; }
+.vz-band-3 { stroke: #a9bf4a; stroke-width: 1.3; }
+.vz-band-4 { stroke: #58a55c; stroke-width: 1.5; }
+.vz-band-5 { stroke: #2f8f6b; stroke-width: 1.7; }
+.vz-band-6 { stroke: #16607f; stroke-width: 2; }
+
+.task-line { stroke: var(--fg-faint); stroke-width: 1.2; stroke-dasharray: 6 4; }
+.task-point { fill: none; stroke: var(--fg-faint); stroke-width: 1.4; }
+.task-label { fill: var(--fg-faint); font-size: 10px; font-family: var(--font); }
+
+.mark-start { fill: var(--ok); }
+.mark-release { fill: var(--bg-panel); stroke: var(--fg); stroke-width: 1.4; }
+.mark-end { fill: var(--sink); }
+.north { stroke: var(--fg-faint); stroke-width: 1.2; fill: none; }
+.scale-bar line { stroke: var(--fg-dim); stroke-width: 1.2; }
+
+.barogram, .trace { touch-action: pan-y; }
+.brush { fill: var(--accent); opacity: 0.14; }
+.cursor { stroke: var(--fg-faint); stroke-width: 1; }
+.readout {
+  fill: var(--fg); font-size: 11px; font-family: var(--mono);
+  paint-order: stroke; stroke: var(--bg-panel); stroke-width: 3px;
+}
+.trace-cursor { fill: var(--fg); stroke: var(--bg-panel); stroke-width: 1.5; }
+
+.legend i.swatch { width: 14px; height: 3px; }
+.legend .vz-band-0 { background: #6b1f1f; }
+.legend .vz-band-1 { background: #b4534b; }
+.legend .vz-band-2 { background: #d9a441; }
+.legend .vz-band-3 { background: #a9bf4a; }
+.legend .vz-band-4 { background: #58a55c; }
+.legend .vz-band-5 { background: #2f8f6b; }
+.legend .vz-band-6 { background: #16607f; }
+
+@media (max-width: 640px) {
+  .kv { grid-template-columns: 1fr; gap: 0 0; }
+  .kv dd { margin-bottom: 0.5rem; }
+  .controls { gap: 0.75rem 1rem; }
+}
+
+details.circle-block { margin-top: 0.5rem; border-top: 1px solid var(--rule); padding-top: 0.5rem; }
+details.circle-block summary {
+  cursor: pointer; font-size: 0.88rem; color: var(--fg-dim); font-variant-numeric: tabular-nums;
+}
+details.circle-block summary:hover { color: var(--fg); }
+details.circle-block[open] summary { color: var(--fg); margin-bottom: 0.4rem; }
+
+/* The trace viewBox is cut to the track, so the figure can be narrower than
+   the column. Centre it rather than letting it hug the left edge. */
+.fig.trace { margin-inline: auto; }

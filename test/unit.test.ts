@@ -9,6 +9,10 @@ import { dm, parseB, parseIgc, chooseAltitude } from '../src/core/parse.ts';
 import { wrap, addKinematics } from '../src/core/kinematics.ts';
 import { mean, median, pstdev, pyFixed, pyMod, pyRound } from '../src/core/pyutil.ts';
 import { Polar, loadPolar, sigma, solve3 } from '../src/core/polar.ts';
+import type { PolarDb } from '../src/core/polar.ts';
+import realPolars from '../src/data/polars.json' with { type: 'json' };
+
+const REAL_DB = realPolars as PolarDb;
 
 // ------------------------------------------------ DDMMmmm coordinate parsing
 
@@ -350,4 +354,39 @@ test('sigma returns the floor rather than NaN outside the fit', () => {
   // NaN here would spread through every airmass figure without a word.
   assert.equal(sigma(1e6), 0.3);
   assert.ok(Number.isFinite(sigma(50000)));
+});
+
+test('the longest matching key wins, so a Duo Discus is not a Discus', () => {
+  // The database lists Discus before Duo Discus, so first-match would make the
+  // Duo Discus entry unreachable and put a single-seater's polar on a
+  // two-seater. See test/DIVERGENCE.md.
+  const db = {
+    gliders: [
+      { name: 'Discus', match: ['discus 2', 'discus2', 'discus'], points: [[90, 0.56], [110, 0.63], [160, 1.4]] },
+      { name: 'Duo Discus', match: ['duo discus', 'duo'], points: [[95, 0.6], [115, 0.66], [170, 1.42]] },
+    ],
+    default: { name: 'generic', points: [[85, 0.63], [105, 0.75], [150, 1.6]] },
+  };
+  assert.equal(loadPolar(db, 'Duo Discus').polar?.name, 'Duo Discus');
+  assert.equal(loadPolar(db, 'Duo Discus XT').polar?.name, 'Duo Discus');
+  // And the single-seater still resolves to itself.
+  assert.equal(loadPolar(db, 'Discus b').polar?.name, 'Discus');
+  assert.equal(loadPolar(db, 'Discus 2c').polar?.name, 'Discus');
+});
+
+test('real database: every glider type resolves to the entry it names', () => {
+  for (const [type, expected] of [
+    ['Duo Discus', 'Duo Discus'],
+    ['Discus b', 'Discus'],
+    ['Grob Twin Astir', 'Grob G103 Twin Astir'],
+    ['Astir CS 77', 'Grob G102 Astir CS'],
+    ['ASK 21', 'ASK 21'],
+    ['K-21', 'ASK 21'],
+    ['Std Cirrus', 'Standard Cirrus'],
+    ['Nimbus 3DM', 'Nimbus'],
+    ['Ventus 2cxa', 'Ventus'],
+    ['SZD-51 Junior', 'SZD-51 Junior'],
+  ] as const) {
+    assert.equal(loadPolar(REAL_DB, type).polar?.name, expected, `${type} matched wrongly`);
+  }
 });

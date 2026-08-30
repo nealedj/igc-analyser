@@ -25,6 +25,12 @@ export const DIVERGENCES: Divergence[] = [
     paths: ['task'],
   },
   {
+    reason: 'Polar matched by first key rather than longest',
+    fixtures: ['wave'],
+    // Only the airmass columns move: the polar changes, nothing else does.
+    paths: ['legs'],
+  },
+  {
     reason: 'Midnight rollover defeated by sorting before unwrapping',
     fixtures: ['midnight-rollover'],
     // The whole analysis moves, because every fix time moves.

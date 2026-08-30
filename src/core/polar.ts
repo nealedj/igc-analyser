@@ -123,18 +123,28 @@ export function loadPolar(
       }
     }
   }
+  // Longest match wins, not first. The oracle takes the first entry whose key
+  // is a substring of the glider type, which makes the result depend on the
+  // order of the database: 'Duo Discus' hits the single-seat Discus, because
+  // its key 'discus' appears earlier in the file than 'duo discus' does. See
+  // DIVERGENCE.md (polar matched by first key rather than longest).
   const squash = (s: string) => s.replace(/-/g, '').replace(/ /g, '');
   const t = squash((gliderType ?? '').toLowerCase());
+  let best: { glider: (typeof db.gliders)[number]; key: string } | null = null;
   for (const g of db.gliders) {
     for (const m of g.match) {
-      if (t.includes(squash(m))) {
-        return {
-          polar: new Polar(g.name, g.points),
-          note: `polar matched to ${g.name} from the glider-type header`,
-          matched: true,
-        };
+      const key = squash(m);
+      if (t.includes(key) && (best === null || key.length > best.key.length)) {
+        best = { glider: g, key };
       }
     }
+  }
+  if (best) {
+    return {
+      polar: new Polar(best.glider.name, best.glider.points),
+      note: `polar matched to ${best.glider.name} from the glider-type header`,
+      matched: true,
+    };
   }
   const d = db.default;
   return {

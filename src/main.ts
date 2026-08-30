@@ -3,23 +3,42 @@
  *
  * Everything happens here in the browser: the file is read with the File API,
  * analysed in this tab, and rendered. Nothing is uploaded, because there is
- * nowhere to upload it to.
+ * nowhere to upload it to. The one exception is the import-by-link control,
+ * which is opt-in and says so.
  */
 
 import './style.css';
 import { analyse } from './core/index.ts';
-import type { Analysis } from './core/index.ts';
+import type { Analysis, PolarDb } from './core/index.ts';
+import polarsDb from './data/polars.json' with { type: 'json' };
 import { clear, h } from './ui/dom.ts';
 import { dropzone } from './ui/dropzone.ts';
 import { barogram, barogramCaption } from './ui/barogram.ts';
+import { climbBandLabels, trace } from './ui/trace.ts';
+import type { TraceColouring } from './ui/trace.ts';
 import { phasePanel, qualityPanel, summaryPanel } from './ui/summary.ts';
-import { loadUnits } from './ui/units.ts';
+import { climbTable, legTable, perCirclePanel, windPanel } from './ui/tables.ts';
+import { controls, importBar } from './ui/controls.ts';
+import { linkFigures } from './ui/interact.ts';
+import type { Span } from './ui/interact.ts';
+import { duration, hms, loadUnits } from './ui/units.ts';
+
+const DB = polarsDb as PolarDb;
 
 const app = document.getElementById('app')!;
 clear(app);
 loadUnits();
 
 const results = h('div', { id: 'results' });
+
+/** Everything that survives a re-render. */
+const state: {
+  name: string;
+  text: string;
+  colourBy: TraceColouring;
+  polarForce: string | undefined;
+  selection: Span | null;
+} = { name: '', text: '', colourBy: 'phase', polarForce: undefined, selection: null };
 
 app.append(
   h(
@@ -37,16 +56,16 @@ app.append(
       'p',
       { class: 'privacy' },
       h('strong', {}, 'Your file stays on your machine. '),
-      'It is read in this tab and analysed here. There is no server, no upload ' +
-        'and no analytics. Once this page has loaded you can turn the network off ' +
-        'and it will still work.',
+      'It is read in this tab and analysed here. There is no server and no analytics. ' +
+        'Once this page has loaded you can turn the network off and it will still work.',
     ),
   ),
-  dropzone({ onFile: run, onError: showError }),
+  dropzone({ onFile: load, onError: (m) => showError(m) }),
+  importBar(load, showError),
   results,
 );
 
-function showError(message: string): void {
+function showError(message: string, hint?: string): void {
   clear(results);
   results.append(
     h(
@@ -54,48 +73,164 @@ function showError(message: string): void {
       { class: 'panel error' },
       h('h2', {}, 'That did not work'),
       h('p', { class: 'lede' }, message),
+      hint ? h('p', { class: 'caption' }, hint) : null,
     ),
   );
 }
 
-function run(name: string, text: string): void {
-  let analysis: Analysis;
+function load(name: string, text: string): void {
+  state.name = name;
+  state.text = text;
+  state.selection = null;
+  state.polarForce = undefined;
+  render();
+}
+
+function render(): void {
+  let a: Analysis;
   try {
-    analysis = analyse(text);
+    a = analyse(state.text, {
+      polarDb: DB,
+      polar: state.polarForce ? { force: state.polarForce } : {},
+    });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
     showError(
-      `${name}: ${msg} ` +
-        'This tool reads IGC B records only. Most flight software will export ' +
-        'IGC directly; .cup, .gpx, .kml and SeeYou files are not IGC.',
+      `${state.name}: ${e instanceof Error ? e.message : String(e)}`,
+      'This tool reads IGC B records only. Most flight software exports IGC directly; ' +
+        '.cup, .gpx, .kml and SeeYou files are not IGC.',
     );
     return;
   }
-  render(name, analysis);
-}
 
-function render(name: string, a: Analysis): void {
   clear(results);
+
   const baro = barogram(a);
+  const trc = trace(a, { colourBy: state.colourBy });
+  const tables = h('div', { id: 'tables' });
+
+  const link = linkFigures(a, baro, trc, (span) => {
+    state.selection = span;
+    renderTables(a, tables, span, link);
+  });
 
   results.append(
-    h('p', { class: 'caption' }, `Analysing ${name}`),
-    // Quality first: it governs how hard the rest of the page can be read.
+    h(
+      'div',
+      { class: 'file-line' },
+      h('span', {}, state.name),
+      h(
+        'span',
+        { class: 'file-meta' },
+        `${a.result.trace.quality.fixes.toLocaleString('en-GB')} fixes, ` +
+          `${hms(a.result.trace.start)} to ${hms(a.result.trace.end)} UTC`,
+      ),
+    ),
+    controls(DB, { colourBy: state.colourBy, polarForce: state.polarForce }, {
+      onUnits: () => render(),
+      onColourBy: (c) => {
+        state.colourBy = c;
+        render();
+      },
+      onPolar: (p) => {
+        state.polarForce = p;
+        render();
+      },
+    }),
     qualityPanel(a),
     summaryPanel(a),
-    h(
-      'figure',
-      { class: 'figure' },
-      h('h2', {}, 'Barogram'),
-      h('div', { class: 'figure-scroll' }, baro.svg),
-      h(
-        'p',
-        { class: 'legend' },
-        h('span', {}, h('i', { class: 'swatch-circling' }), 'circling'),
-        h('span', {}, h('i', { class: 'swatch-straight' }), 'straight flight'),
-      ),
-      h('figcaption', { class: 'caption' }, barogramCaption(a)),
-    ),
+    figure('Barogram', baro.svg, barogramCaption(a), phaseLegend()),
     phasePanel(a),
+    figure(
+      'Track',
+      trc.svg,
+      'Plan view, north up, equirectangular with the aspect corrected for latitude. ' +
+        'No basemap: this is the trace and the declared task, nothing else. ' +
+        'Drag on the barogram to highlight a stretch here.',
+      state.colourBy === 'phase' ? phaseLegend() : climbLegend(),
+    ),
+    tables,
+  );
+
+  renderTables(a, tables, state.selection, link);
+  if (state.selection) link.setSelection(state.selection);
+}
+
+/**
+ * The tables are the part that responds to a brush, so they are re-rendered on
+ * selection change while the figures keep their DOM and just repaint.
+ */
+function renderTables(
+  a: Analysis,
+  host: HTMLElement,
+  span: Span | null,
+  link: ReturnType<typeof linkFigures>,
+): void {
+  clear(host);
+
+  const filtered: Analysis = span
+    ? {
+        ...a,
+        result: {
+          ...a.result,
+          climbs: a.result.climbs.filter((c) => c.end >= span.start && c.start <= span.end),
+          legs: a.result.legs.filter((l) => l.end >= span.start && l.start <= span.end),
+        },
+      }
+    : a;
+
+  if (span) {
+    const clearBtn = h('button', { type: 'button', class: 'clear-brush' }, 'Show the whole flight');
+    clearBtn.addEventListener('click', () => link.setSelection(null));
+    host.append(
+      h(
+        'div',
+        { class: 'brush-note' },
+        h(
+          'span',
+          {},
+          `Showing ${hms(span.start)} to ${hms(span.end)} UTC ` +
+            `(${duration(span.end - span.start)}): ` +
+            `${filtered.result.climbs.length} climb${filtered.result.climbs.length === 1 ? '' : 's'}, ` +
+            `${filtered.result.legs.length} leg${filtered.result.legs.length === 1 ? '' : 's'}.`,
+        ),
+        clearBtn,
+      ),
+    );
+  }
+
+  const onSelect = (s: Span | null) => link.setSelection(s);
+  host.append(
+    climbTable(filtered, { onSelect }),
+    perCirclePanel(filtered) ?? h('div', { class: 'nothing' }),
+    windPanel(filtered) ?? h('div', { class: 'nothing' }),
+    legTable(filtered, { onSelect }),
   );
 }
+
+function figure(title: string, svg: SVGSVGElement, caption: string, legend: HTMLElement): HTMLElement {
+  return h(
+    'figure',
+    { class: 'figure' },
+    h('h2', {}, title),
+    h('div', { class: 'figure-scroll' }, svg),
+    legend,
+    h('figcaption', { class: 'caption' }, caption),
+  );
+}
+
+const phaseLegend = (): HTMLElement =>
+  h(
+    'p',
+    { class: 'legend' },
+    h('span', {}, h('i', { class: 'swatch-circling' }), 'circling'),
+    h('span', {}, h('i', { class: 'swatch-straight' }), 'straight flight'),
+  );
+
+const climbLegend = (): HTMLElement =>
+  h(
+    'p',
+    { class: 'legend' },
+    ...climbBandLabels().map((b) =>
+      h('span', {}, h('i', { class: `swatch ${b.cls}` }), `${b.label} m/s`),
+    ),
+  );
