@@ -4,7 +4,7 @@ Drop a glider flight log in a browser and get a soaring debrief: the phase
 split, the climbs and their circle geometry, the wind, and what the air was
 doing on the straight legs.
 
-**[igc.neale.dev](https://igc.neale.dev)**
+**[nealedj.github.io/igc-analyser](https://nealedj.github.io/igc-analyser/)**
 
 ![The analyser: the data-quality panel, the flight summary, and the barogram with circling picked out](docs/screenshot.png)
 
@@ -121,9 +121,16 @@ a consuming page can be as honest as this one is.
 ## Deployment
 
 Pushes to `main` build and publish to GitHub Pages via
-[`.github/workflows/deploy.yml`](.github/workflows/). One-time setup in the
-repository settings: **Pages → Build and deployment → Source: GitHub Actions**,
-and a `CNAME` DNS record pointing `igc.neale.dev` at the Pages host.
+[`.github/workflows/deploy.yml`](.github/workflows/), as a project page at
+`https://nealedj.github.io/igc-analyser/`.
+
+One-time setup, in the repository settings: **Pages → Build and deployment →
+Source: GitHub Actions**. Nothing else; no DNS, no branch to create.
+
+To move it to a custom domain later, set `BASE_PATH: /` in the workflow, add a
+step writing the domain to `dist/CNAME`, and point a DNS `CNAME` record at the
+Pages host. No source change is needed either way — that is what the
+`BASE_PATH` indirection is for.
 
 ## Licence
 

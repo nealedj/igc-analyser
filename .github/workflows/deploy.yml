@@ -41,16 +41,14 @@ jobs:
       - name: Fixtures still match the vendored oracle
         run: npm run verify-fixtures
 
-      # Served from a custom domain at the root, so base stays '/'. Deploying
-      # to a project subpath instead is BASE_PATH=/igc-analyser/ and dropping
-      # the CNAME step; nothing in the source needs to change either way.
+      # Published as a project page at nealedj.github.io/igc-analyser/, so the
+      # assets have to be addressed from that subpath. Nothing in the source
+      # knows about it: moving to a custom domain at a root is BASE_PATH=/ plus
+      # a step writing dist/CNAME, and no code change.
       - name: Build
         run: npm run build
         env:
-          BASE_PATH: /
-
-      - name: Custom domain
-        run: echo 'igc.neale.dev' > dist/CNAME
+          BASE_PATH: /igc-analyser/
 
       # No server-side routing, but a 404 that loads the app keeps a mistyped
       # deep link from being a dead end.

@@ -94,8 +94,8 @@ export function importBar(
   const input = h('input', {
     type: 'text',
     class: 'import-input',
-    placeholder: 'bgaladder.net/FlightInfo?FlightID=100000',
-    'aria-label': 'BGA Ladder or WeGlide flight link',
+    placeholder: 'bgaladder.net/FlightInfo?FlightID=100000, or a link to any .igc',
+    'aria-label': 'Flight link or IGC file URL',
     spellcheck: 'false',
   }) as HTMLInputElement;
 
@@ -106,7 +106,8 @@ export function importBar(
     if (!target) {
       onError(
         'That does not look like a flight link.',
-        'Paste a BGA Ladder flight link, a WeGlide flight link, or a bare BGA flight number.',
+        'Paste a BGA Ladder or WeGlide flight link, a bare BGA flight number, or a ' +
+          'direct link to an .igc file anywhere.',
       );
       return;
     }
@@ -132,13 +133,21 @@ export function importBar(
   return h(
     'details',
     { class: 'import' },
-    h('summary', {}, 'Or fetch one from the BGA Ladder'),
+    h('summary', {}, 'Or fetch one by link'),
     h(
       'p',
       { class: 'import-note' },
-      'This is the only thing here that uses the network, and only when you press ' +
-        'Fetch. WeGlide links are recognised too, but WeGlide only lets its own site ' +
-        'read its API from a browser, so those have to be downloaded and dropped in.',
+      'A BGA Ladder or WeGlide flight link, a bare BGA flight number, or a direct ' +
+        'link to an .igc file anywhere. Your browser fetches it straight from that ' +
+        'site - nothing passes through a server here. This is the only thing on the ' +
+        'page that uses the network, and only when you press Fetch.',
+    ),
+    h(
+      'p',
+      { class: 'import-note' },
+      'Whether it works is up to the site being asked: a site has to opt in before ' +
+        'another page may read its files. The BGA Ladder does. Where one does not, ' +
+        'downloading the file and dropping it here always works.',
     ),
     h('div', { class: 'import-row' }, input, button),
   );
