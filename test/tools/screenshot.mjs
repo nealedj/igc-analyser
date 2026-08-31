@@ -23,7 +23,7 @@ const out = process.env.OUT ?? 'docs/screenshot.png';
 const browser = await chromium.launch(
   process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
 );
-const page = await browser.newPage({ viewport: { width: 1100, height: 980 }, deviceScaleFactor: 1.5 });
+const page = await browser.newPage({ viewport: { width: 1100, height: 1420 }, deviceScaleFactor: 1.5 });
 const errors = [];
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -33,7 +33,7 @@ await page.setInputFiles('#file-input', igc);
 await page.waitForSelector('#results .panel', { timeout: 15000 });
 // The whole page is several thousand pixels tall and makes a poor README
 // image. Frame the part that says what the tool is: the honesty panel, the
-// summary and the barogram.
+// summary, the declared task and the barogram.
 await page.$eval('.quality', (e) => e.scrollIntoView({ block: 'start' }));
 await page.evaluate(() => window.scrollBy(0, -24));
 await page.waitForTimeout(500);

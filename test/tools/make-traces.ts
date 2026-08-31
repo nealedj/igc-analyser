@@ -56,7 +56,24 @@ interface Opts {
   lyingIRecord?: boolean;
   /** Randomly drop fixes with this probability, plus occasional long gaps. */
   dropouts?: number;
-  task?: { name: string; lat: number; lon: number }[];
+  /**
+   * A declared task, written as a spec-shaped C block: the header, then
+   * take-off, start, the turnpoints, finish and landing in that order.
+   * `points` is the scoring part - start, turnpoints, finish - and the
+   * take-off and landing records are only written if given.
+   */
+  task?: {
+    description?: string;
+    takeoff?: Pt;
+    points: Pt[];
+    landing?: Pt;
+  };
+}
+
+export interface Pt {
+  name: string;
+  lat: number;
+  lon: number;
 }
 
 class Flight {
@@ -190,6 +207,64 @@ class Flight {
     return this;
   }
 
+  /** Great-circle bearing from where the glider is now, degrees true. */
+  private bearingTo(p: Pt): number {
+    const p1 = this.lat * D2R;
+    const p2 = p.lat * D2R;
+    const dl = (p.lon - this.lon) * D2R;
+    const y = Math.sin(dl) * Math.cos(p2);
+    const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+    return (Math.atan2(y, x) / D2R + 360) % 360;
+  }
+
+  /** Distance from where the glider is now, metres. */
+  private rangeTo(p: Pt): number {
+    const dy = (p.lat - this.lat) * D2R * R;
+    const dx = (p.lon - this.lon) * D2R * R * Math.cos(this.lat * D2R);
+    return Math.hypot(dx, dy);
+  }
+
+  /**
+   * Fly a task leg: cruise towards the turnpoint, stopping to climb whenever
+   * the glide runs down to the bottom of the band. The heading is refreshed
+   * every minute, so the track is a real course made good rather than a
+   * straight line drawn between two points.
+   */
+  toward(
+    p: Pt,
+    band: { bottom: number; top: number; climb: number; tas: number; sink: number },
+    within = 3000,
+  ): this {
+    let guard = 0;
+    while (this.rangeTo(p) > within && guard++ < 400) {
+      if (this.alt < band.bottom) {
+        this.circleTo(band.top, band.climb, guard % 2 ? 18 : -18, 28);
+        continue;
+      }
+      const secs = Math.min(60, Math.max(20, this.rangeTo(p) / band.tas));
+      this.cruise(secs, this.bearingTo(p), band.tas, band.sink);
+    }
+    return this;
+  }
+
+  /**
+   * Final glide: straight at the finish, no climbing, all the way down. The
+   * heading is refreshed for the same reason, and the descent rate is set to
+   * arrive at roughly the height asked for.
+   */
+  finalGlide(p: Pt, arriveAlt: number, tas: number): this {
+    let guard = 0;
+    while (this.rangeTo(p) > 1500 && this.alt > arriveAlt && guard++ < 400) {
+      const range = this.rangeTo(p);
+      const secs = Math.min(60, Math.max(15, range / tas));
+      // Spread the height left over the distance left, so the glide arrives
+      // rather than levelling off or diving into the ground.
+      const sink = -Math.max(0.2, (this.alt - arriveAlt) / Math.max(1, range / tas));
+      this.cruise(secs, this.bearingTo(p), tas, sink);
+    }
+    return this;
+  }
+
   /** A ridge beat: out along the ridge, procedure turn, and back. */
   beat(legs: number, dur: number, hdg: number, tas: number): this {
     for (let i = 0; i < legs; i++) {
@@ -218,8 +293,22 @@ class Flight {
     L.push(o.lyingIRecord ? 'I023638FXA3941SIU' : 'I023638FXA3940SIU');
 
     if (o.task) {
-      L.push(`C${o.date}${hhmmss(o.startTime)}${o.date}000${o.task.length - 2}`);
-      for (const p of o.task) L.push(`C${latDM(p.lat)}${lonDM(p.lon)}${p.name}`);
+      // C + declaration date + declaration time + flight date + task number +
+      // turnpoint count + description, then one record per point. The count
+      // excludes the start and the finish, which is what tells a reader
+      // whether the take-off and landing records are there.
+      const tps = Math.max(0, o.task.points.length - 2);
+      const declared = o.startTime - 45 * 60;
+      L.push(
+        `C${o.date}${hhmmss(declared)}${o.date}0001${String(tps).padStart(2, '0')}` +
+          (o.task.description ?? ''),
+      );
+      const block = [
+        ...(o.task.takeoff ? [o.task.takeoff] : []),
+        ...o.task.points,
+        ...(o.task.landing ? [o.task.landing] : []),
+      ];
+      for (const p of block) L.push(`C${latDM(p.lat)}${lonDM(p.lon)}${p.name}`);
     }
 
     let dropUntil = -1;
@@ -286,11 +375,14 @@ const traces: Record<string, () => string> = {
       pilot: 'Fixture Pilot', logger: 'LXNAV,LX9000', wind: [4.5, 2.0],
       startTime: 11 * 3600 + 42 * 60, lat: 51.7, lon: -1.9, groundAlt: 150,
       interval: 1, noise: 2.5,
-      task: [
-        { name: 'ASTON DOWN', lat: 51.7, lon: -1.9 },
-        { name: 'EDGEHILL', lat: 52.13, lon: -1.45 },
-        { name: 'ASTON DOWN', lat: 51.7, lon: -1.9 },
-      ],
+      task: {
+        description: 'LOCAL OUT AND RETURN',
+        points: [
+          { name: 'ASTON DOWN', lat: 51.7, lon: -1.9 },
+          { name: 'EDGEHILL', lat: 52.13, lon: -1.45 },
+          { name: 'ASTON DOWN', lat: 51.7, lon: -1.9 },
+        ],
+      },
     });
     // Aerotow to 600 m, then eight climbs worked between 700 m and 1500 m:
     // a good but ordinary UK summer day, ending with a landing.
@@ -447,6 +539,59 @@ const traces: Record<string, () => string> = {
     f.ground(45).tow(320, 2.4, 30)
       .glideTo(600, 90, 30, -0.8).circleTo(750, 1.0, 15, 27)
       .glideTo(300, 270, 30, -0.9).land(180);
+    return f.build();
+  },
+
+  /**
+   * A declared 300 km triangle, flown and finished.
+   *
+   * The case the other fixtures do not cover: a full IGC declaration - header,
+   * take-off, start, two turnpoints, finish, landing - and a flight that ends
+   * with a long final glide straight into the circuit. Both of those were got
+   * wrong before this fixture existed. The take-off and landing records were
+   * counted as turnpoints, which turned a 300 km triangle into a five-leg task
+   * by way of the launch point; and the glide home and the circuit were one
+   * straight run in the trace, reported whole as a twenty-minute landing.
+   */
+  'declared-300k': () => {
+    // Legs of 100, 105 and 95 km: a 300 km triangle, the classic Gold badge
+    // distance and the size at which a mis-parsed declaration is obvious.
+    const home = { name: 'LASHAM', lat: 51.187, lon: -1.033 };
+    const tp1 = { name: 'EDGEHILL', lat: 52.032, lon: -1.528 };
+    const tp2 = { name: 'DEVIZES', lat: 51.259, lon: -2.399 };
+    // 45 km short of home on the last leg: the top of the final glide.
+    const runIn = { name: 'RUN IN', lat: 51.222, lon: -1.682 };
+    const f = new Flight({
+      seed: 9, date: '070623', gliderType: 'PIK-20D', gliderId: 'G-CPIK',
+      pilot: 'Fixture Pilot', logger: 'LXNAV,LX9000', wind: [3.0, -2.5],
+      startTime: 10 * 3600 + 20 * 60, lat: home.lat, lon: home.lon,
+      groundAlt: 190, interval: 4, noise: 2.5,
+      task: {
+        description: '300KM TRIANGLE',
+        takeoff: { ...home, name: 'TAKEOFF LASHAM' },
+        points: [
+          { ...home, name: 'START LASHAM' },
+          tp1,
+          tp2,
+          { ...home, name: 'FINISH LASHAM' },
+        ],
+        landing: { ...home, name: 'LANDING LASHAM' },
+      },
+    });
+    // Aerotow, a climb to the top of the band, then round the triangle
+    // working the band between 900 m and 1,700 m.
+    const band = { bottom: 900, top: 1700, climb: 2.2, tas: 33, sink: -1.5 };
+    f.ground(120).tow(300, 2.6, 30).circleTo(1600, 2.0, 18, 28);
+    f.toward(tp1, band).circleTo(1750, 2.4, -18, 28);
+    f.toward(tp2, band).circleTo(1900, 2.6, 18, 28);
+    // The last climb of the day, then twenty minutes of final glide at speed,
+    // arriving over the finish at 350 m and joining straight in. The glide and
+    // the circuit are one unbroken straight run in the trace, which is the
+    // whole point of the fixture.
+    f.toward(runIn, band, 2000);
+    f.circleTo(1900, 2.2, -18, 28);
+    f.finalGlide(home, 350, 36);
+    f.land(200);
     return f.build();
   },
 };

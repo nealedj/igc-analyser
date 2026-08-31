@@ -16,7 +16,7 @@ import { dropzone } from './ui/dropzone.ts';
 import { barogram, barogramCaption } from './ui/barogram.ts';
 import { climbBandLabels, trace } from './ui/trace.ts';
 import type { TraceColouring } from './ui/trace.ts';
-import { phasePanel, qualityPanel, summaryPanel } from './ui/summary.ts';
+import { phasePanel, qualityPanel, summaryPanel, taskPanel } from './ui/summary.ts';
 import { climbTable, legTable, perCirclePanel, windPanel } from './ui/tables.ts';
 import { controls, importBar } from './ui/controls.ts';
 import { linkFigures } from './ui/interact.ts';
@@ -141,6 +141,7 @@ function render(): void {
     }),
     qualityPanel(a),
     summaryPanel(a),
+    taskPanel(a),
     figure('Barogram', baro.svg, barogramCaption(a), phaseLegend()),
     phasePanel(a),
     figure(

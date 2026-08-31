@@ -12,7 +12,7 @@
  *   barogram.svg   altitude against time, static and themeable
  */
 
-import type { Analysis } from '../core/index.ts';
+import type { Analysis, TaskPoint } from '../core/index.ts';
 import { zip } from './zip.ts';
 import { heightUnit, units } from './units.ts';
 
@@ -42,6 +42,10 @@ function iso(date: string | undefined, t: number): string | null {
 
 const round = (x: number | null | undefined, dp = 3): number | null =>
   x === null || x === undefined || !Number.isFinite(x) ? null : Number(x.toFixed(dp));
+
+/** A declared point, or null where the file did not carry one. */
+const point = (p: TaskPoint | null): Record<string, unknown> | null =>
+  p === null ? null : { name: p.name || null, lat: p.lat, lon: p.lon };
 
 export interface ExportOptions {
   /** Original filename, recorded for provenance. */
@@ -107,11 +111,49 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
           declared: true,
           shape: ts.shape,
           closed: ts.closed,
+          // Start, turnpoints and finish only. The declared take-off and
+          // landing are carried separately: adding them to the distance turns
+          // a 300 km triangle into a four-leg task of some other length.
           distanceM: round(ts.distance_m, 1),
-          points: ts.points.map((p) => ({ name: p.name || null, lat: p.lat, lon: p.lon })),
-          legs: ts.legs.map((l) => ({ from: l.from, to: l.to, distanceM: round(l.distance_m, 1) })),
+          turnpoints: ts.turnpoints,
+          points: ts.points.map((p) => ({
+            name: p.name || null,
+            lat: p.lat,
+            lon: p.lon,
+            role: p.role ?? null,
+          })),
+          legs: ts.legs.map((l) => ({
+            from: l.from,
+            to: l.to,
+            distanceM: round(l.distance_m, 1),
+            bearingDeg: round(l.bearing_deg, 1),
+          })),
+          takeoff: point(ts.takeoff),
+          landing: point(ts.landing),
+          declaration: ts.declaration
+            ? {
+                description: ts.declaration.description || null,
+                declaredDate: ts.declaration.declared_date ?? null,
+                declaredTime:
+                  ts.declaration.declared_time_s === undefined
+                    ? null
+                    : z(ts.declaration.declared_time_s),
+                turnpoints: ts.declaration.turnpoints ?? null,
+              }
+            : null,
         }
-      : { declared: false, shape: null, closed: null, distanceM: null, points: [], legs: [] },
+      : {
+          declared: false,
+          shape: null,
+          closed: null,
+          distanceM: null,
+          turnpoints: null,
+          points: [],
+          legs: [],
+          takeoff: null,
+          landing: null,
+          declaration: null,
+        },
     phase: {
       circlingS: r.phase.circling_s,
       straightS: r.phase.straight_s,
@@ -182,6 +224,8 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
       /** Depends entirely on `polar` below. Never publish one without the other. */
       meanAirmassMs: round(l.mean_airmass_ms ?? null),
       fracRisingAir: round(l.frac_rising_air ?? null, 4),
+      /** 'cruise', 'final glide' or 'circuit'. An open set: match, or default. */
+      kind: l.kind ?? 'cruise',
       circuit: Boolean(l.circuit),
     })),
     polar: {

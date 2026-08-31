@@ -56,16 +56,43 @@ export interface Header {
   logger_id?: string;
 }
 
+/**
+ * What a `C` record is in the declaration.
+ *
+ * An IGC declaration is take-off, start, the turnpoints, finish, landing - in
+ * that order and nothing else. Only start, turn and finish are the task; the
+ * other two are where the glider was expected to leave and arrive, and adding
+ * them to the distance inflates a 300 km triangle by however far the launch
+ * point is from the start.
+ */
+export type TaskRole = 'takeoff' | 'start' | 'turn' | 'finish' | 'landing';
+
 export interface TaskPoint {
   lat: number;
   lon: number;
   name: string;
+  /** Absent where the C block was too irregular to assign roles by position. */
+  role?: TaskRole;
+}
+
+/** The header that opens a `C` block: what was declared, and when. */
+export interface TaskDeclaration {
+  /** Free text after the fixed fields. Often the task name, often empty. */
+  description: string;
+  /** When the declaration was made, `YYYY-MM-DD`, where the header carries it. */
+  declared_date?: string;
+  /** Time of declaration, seconds since midnight UTC. */
+  declared_time_s?: number;
+  /** Turnpoints the header says the task has, excluding start and finish. */
+  turnpoints?: number;
 }
 
 export interface ParsedIgc {
   header: Header;
   fixes: Fix[];
   task: TaskPoint[];
+  /** Null when the file declares no task, or opens the block with no header. */
+  declaration: TaskDeclaration | null;
   warnings: string[];
 }
 
