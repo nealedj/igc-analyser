@@ -11,9 +11,29 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { analyse } from '../src/core/index.ts';
+import type { PolarDb } from '../src/core/index.ts';
 import { compare } from './compare.ts';
 import { DIVERGENCES } from './divergence.ts';
 import { fixtures } from './tools/fixtures.ts';
+
+/**
+ * The oracle's own polar database, and the oracle's own leg segmentation.
+ *
+ * Two things the app ships differ from the oracle by choice rather than by
+ * accident: the polars are corrected against published figures, and the final
+ * straight run is split at circuit entry so a final glide is not reported as a
+ * landing. Both are explained in DIVERGENCE.md.
+ *
+ * Feeding the port the oracle's inputs here keeps this comparison what it is
+ * meant to be - the same algorithm on the same data, to the last decimal -
+ * instead of writing off `legs` on every fixture as expected drift. The
+ * shipped behaviour is covered by the unit tests instead.
+ */
+const ORACLE_POLARS = JSON.parse(
+  readFileSync(new URL('../reference/polars.json', import.meta.url), 'utf8'),
+) as PolarDb;
+
+const AS_ORACLE = { polarDb: ORACLE_POLARS, splitCircuit: false } as const;
 
 /**
  * Oracle top-level keys the port is expected to reproduce. Phases add to this
@@ -45,7 +65,7 @@ test('there are enough fixtures to be a regression suite', () => {
 for (const f of cases) {
   test(`golden: ${f.name}`, () => {
     const oracle = JSON.parse(readFileSync(f.expected, 'utf8')) as Record<string, unknown>;
-    const { result } = analyse(readFileSync(f.igc, 'latin1'));
+    const { result } = analyse(readFileSync(f.igc, 'latin1'), AS_ORACLE);
 
     const subject: Record<string, unknown> = {};
     for (const k of COVERED) {

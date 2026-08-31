@@ -149,6 +149,43 @@ test('a declared task carries its distance, shape and legs', () => {
   assert.ok(Math.abs(summed - j.task.distanceM) < 1, 'legs do not sum to the total');
 });
 
+test('the declared take-off and landing are carried, but not in the distance', () => {
+  // Counting them as turnpoints would make a 300 km triangle a five-leg course
+  // by way of the launch point, and publish the wrong total.
+  const j = buildFlightJson(load('declared-300k')) as Record<string, any>;
+  assert.equal(j.task.shape, 'triangle');
+  assert.equal(j.task.turnpoints, 2);
+  assert.equal(j.task.points.length, 4);
+  assert.deepEqual(
+    j.task.points.map((p: any) => p.role),
+    ['start', 'turn', 'turn', 'finish'],
+  );
+  assert.equal(j.task.takeoff.name, 'TAKEOFF LASHAM');
+  assert.equal(j.task.landing.name, 'LANDING LASHAM');
+  assert.ok(
+    Math.abs(j.task.distanceM - 300000) < 2000,
+    `declared ${(j.task.distanceM / 1000).toFixed(1)} km, not 300`,
+  );
+  assert.equal(j.task.declaration.description, '300KM TRIANGLE');
+  assert.equal(j.task.declaration.declaredTime, '09:35:00Z');
+  assert.equal(j.task.legs[0].bearingDeg !== null, true);
+});
+
+test('the final glide and the circuit are published as separate legs', () => {
+  const j = buildFlightJson(load('declared-300k')) as Record<string, any>;
+  const kinds = j.legs.map((l: any) => l.kind);
+  assert.equal(kinds.filter((k: string) => k === 'final glide').length, 1);
+  assert.equal(kinds.filter((k: string) => k === 'circuit').length, 1);
+  assert.equal(kinds[kinds.length - 1], 'circuit', 'the circuit is the last leg');
+
+  const glide = j.legs.find((l: any) => l.kind === 'final glide');
+  const circuit = j.legs.find((l: any) => l.kind === 'circuit');
+  assert.equal(glide.circuit, false, 'circuit must agree with kind');
+  assert.equal(circuit.circuit, true);
+  assert.ok(glide.durationS > 900, `final glide only ${glide.durationS} s`);
+  assert.ok(circuit.durationS < 600, `circuit is ${circuit.durationS} s`);
+});
+
 test('a file with no task says so rather than inventing one', () => {
   const j = buildFlightJson(load('ridge-day')) as Record<string, any>;
   assert.equal(j.task.declared, false);

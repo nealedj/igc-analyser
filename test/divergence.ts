@@ -21,7 +21,7 @@ export interface Divergence {
 export const DIVERGENCES: Divergence[] = [
   {
     reason: 'C-record declaration header parsed as a task point',
-    fixtures: ['thermal-day'],
+    fixtures: ['thermal-day', 'declared-300k'],
     paths: ['task'],
   },
   {

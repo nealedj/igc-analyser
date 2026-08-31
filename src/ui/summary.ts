@@ -150,6 +150,118 @@ export function summaryPanel(a: Analysis): HTMLElement {
 }
 
 /**
+ * The declared task, from the file's C records.
+ *
+ * Shown because it is the thing the flight was flown against: a debrief that
+ * says "303 km triangle, declared at 09:41" is answering a different question
+ * from one that only counts thermals. Take-off and landing records are not in
+ * the distance - they are where the glider left from, not part of the task.
+ *
+ * This is the declaration, not a claim. Nothing here checks the trace against
+ * it: no start line, no observation zones, no finish ring, and no scored
+ * distance. That is a scoring program's job and it is stated rather than
+ * implied, because a number that looks like a badge distance and is not one is
+ * worse than no number.
+ */
+export function taskPanel(a: Analysis): HTMLElement {
+  const t = a.result.task_summary;
+
+  if (!t) {
+    return h(
+      'section',
+      { class: 'panel', 'aria-labelledby': 'task-h' },
+      h('h2', { id: 'task-h' }, 'Declared task'),
+      h(
+        'p',
+        { class: 'lede' },
+        a.result.task.length === 1
+          ? 'One declared point, which is not a task. Nothing to measure against.'
+          : 'No task declared in this file. Many loggers only write a declaration ' +
+              'when one was entered before flight, so this says nothing about what ' +
+              'was flown.',
+      ),
+    );
+  }
+
+  const rows: [string, string][] = [];
+  rows.push([
+    'Task',
+    `${distance(t.distance_m, 1)} ${t.shape}` +
+      (t.turnpoints ? `, ${t.turnpoints} turnpoint${t.turnpoints === 1 ? '' : 's'}` : ''),
+  ]);
+  const d = t.declaration;
+  if (d?.declared_date || d?.declared_time_s !== undefined) {
+    rows.push([
+      'Declared',
+      [d.declared_date, d.declared_time_s !== undefined ? `${hms(d.declared_time_s)} UTC` : null]
+        .filter(Boolean)
+        .join(' at '),
+    ]);
+  }
+  if (d?.description) rows.push(['Described as', d.description]);
+  if (t.takeoff) rows.push(['Take-off declared', t.takeoff.name || pointLabel(t.takeoff)]);
+  if (t.landing) rows.push(['Landing declared', t.landing.name || pointLabel(t.landing)]);
+
+  const legRows = t.legs.map((l, i) =>
+    h(
+      'tr',
+      {},
+      h('td', {}, String(i + 1)),
+      h('td', {}, `${l.from} to ${l.to}`),
+      h('td', {}, distance(l.distance_m, 1)),
+      h('td', {}, `${fmt(l.bearing_deg, 0)}°`),
+    ),
+  );
+
+  return h(
+    'section',
+    { class: 'panel', 'aria-labelledby': 'task-h' },
+    h('h2', { id: 'task-h' }, 'Declared task'),
+    h(
+      'p',
+      { class: 'lede' },
+      `${distance(t.distance_m, 1)} ${t.shape}: ` +
+        t.points.map((p) => p.name || pointLabel(p)).join(' - ') +
+        '.',
+    ),
+    h('dl', { class: 'kv' }, ...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
+    h(
+      'div',
+      { class: 'table-scroll' },
+      h(
+        'table',
+        { class: 'data compact' },
+        h(
+          'thead',
+          {},
+          h(
+            'tr',
+            {},
+            h('th', { scope: 'col' }, '#'),
+            h('th', { scope: 'col' }, 'Leg'),
+            h('th', { scope: 'col' }, 'Distance'),
+            h('th', { scope: 'col' }, 'Track'),
+          ),
+        ),
+        h('tbody', {}, ...legRows),
+      ),
+    ),
+    h(
+      'p',
+      { class: 'caveat' },
+      'This is what was declared, not what was scored. The distance is the ' +
+        'great-circle sum of the legs between the declared points; there is no start ' +
+        'line, no observation zone and no finish ring here, and the trace is not ' +
+        'checked against the declaration. A badge or ladder claim needs a scoring ' +
+        'program.',
+    ),
+  );
+}
+
+const pointLabel = (p: { lat: number; lon: number }): string =>
+  `${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}`;
+
+/**
  * The phase split, which decides what kind of debrief the flight deserves.
  * Stated in words as well as numbers, following `interpretation.md` section 1.
  */

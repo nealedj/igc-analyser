@@ -10,15 +10,31 @@
  */
 
 
+/** The published figures an entry's points are derived from. */
+export interface PublishedPolar {
+  best_ld: number;
+  best_ld_kmh: number;
+  min_sink_ms: number;
+}
+
 export interface PolarPoints {
   name: string;
   match?: string[];
+  /**
+   * Published best glide for this type, carried so the database can be
+   * checked against the glider it names rather than only against itself.
+   * See `test/tools/make-polars.ts`, which derives `points` from it.
+   */
+  published?: PublishedPolar;
   /** Three (IAS km/h, sink m/s) pairs. Loosely typed: this comes from JSON. */
   points: number[][];
 }
 
+/** A database entry: a glider, so it must carry the keys it is matched on. */
+export type PolarEntry = PolarPoints & { match: string[] };
+
 export interface PolarDb {
-  gliders: Required<PolarPoints>[];
+  gliders: PolarEntry[];
   default: PolarPoints;
 }
 

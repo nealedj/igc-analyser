@@ -14,6 +14,15 @@ import type { Fix } from './types.ts';
 import { Polar, sigma } from './polar.ts';
 import { mean, pstdev } from './pyutil.ts';
 
+/**
+ * What a straight leg was for.
+ *
+ * `final glide` is the last glide of the flight: from the top of the descent
+ * down to circuit height, whether or not a task was declared. `circuit` is
+ * what is left below that - the join, the circuit and the approach.
+ */
+export type LegKind = 'cruise' | 'final glide' | 'circuit';
+
 export interface Leg {
   start: number;
   end: number;
@@ -29,8 +38,39 @@ export interface Leg {
   mean_airmass_ms?: number;
   frac_rising_air?: number;
   sampled_s?: number;
-  /** Set once the flight as a whole is known: part of the landing circuit. */
+  /** Set once the flight as a whole is known. */
+  kind?: LegKind;
+  /**
+   * `kind === 'circuit'`. Kept because the oracle emits it and the export
+   * format publishes it; `kind` is the one to read.
+   */
   circuit?: boolean;
+}
+
+/**
+ * Circuit height above the landing field, metres. About 1,000 ft: the height a
+ * British circuit is joined at, and low enough that nothing above it is still
+ * part of the landing.
+ */
+export const CIRCUIT_M = 300;
+
+/**
+ * The first fix of the final descent below circuit height, or null.
+ *
+ * "Final" is the point of it: the glider has to stay below from there to the
+ * end, so a low save at 800 ft in the middle of the day is not circuit entry.
+ * Returns null when the flight did not land, because then there is no circuit
+ * and no field height to measure against.
+ */
+export function circuitEntry(F: Fix[], landed: boolean): number | null {
+  if (!landed || F.length === 0) return null;
+  const ceiling = F[F.length - 1].alt + CIRCUIT_M;
+  let entry: number | null = null;
+  for (let i = F.length - 1; i >= 0; i--) {
+    if (F[i].alt >= ceiling) break;
+    entry = i;
+  }
+  return entry;
 }
 
 export function analyseLeg(

@@ -22,7 +22,8 @@
     "make-fixtures": "node --experimental-strip-types test/tools/make-fixtures.ts",
     "verify-fixtures": "node --experimental-strip-types test/tools/verify-fixtures.ts",
     "check-core": "node --experimental-strip-types test/tools/check-core.ts",
-    "screenshot": "node test/tools/screenshot.mjs"
+    "screenshot": "node test/tools/screenshot.mjs",
+    "make-polars": "node --experimental-strip-types test/tools/make-polars.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

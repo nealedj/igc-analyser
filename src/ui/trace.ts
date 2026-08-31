@@ -40,8 +40,11 @@ export function trace(analysis: Analysis, opts: TraceOptions = {}): Trace {
     if (f.lon < lonMin) lonMin = f.lon;
     if (f.lon > lonMax) lonMax = f.lon;
   }
-  // Include the task, so a declared task is never drawn off the edge.
-  for (const t of analysis.result.task) {
+  // Include the task, so a declared task is never drawn off the edge. Only the
+  // scoring points: the declared take-off and landing are where the glider was
+  // expected to be on the ground, not part of the course.
+  const taskPoints = analysis.result.task_summary?.points ?? [];
+  for (const t of taskPoints) {
     latMin = Math.min(latMin, t.lat); latMax = Math.max(latMax, t.lat);
     lonMin = Math.min(lonMin, t.lon); lonMax = Math.max(lonMax, t.lon);
   }
@@ -85,7 +88,7 @@ export function trace(analysis: Analysis, opts: TraceOptions = {}): Trace {
   });
 
   // ------------------------------------------------------- declared task
-  const task = analysis.result.task;
+  const task = taskPoints;
   if (task.length >= 2) {
     const g = el('g', { class: 'task' });
     let d = '';
