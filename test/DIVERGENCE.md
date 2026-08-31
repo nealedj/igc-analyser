@@ -3,18 +3,32 @@
 `reference/igc_analyse.py` is the specification for this port, and the golden
 fixtures are its output. Everything must match it to within float drift.
 
-Two things do not, on purpose. Both are defects in the oracle that the port
+Some things do not, on purpose. They are defects in the oracle that the port
 fixes rather than reproduces, because reproducing them would put visibly wrong
-output in front of a pilot. Each is registered in `test/divergence.ts` so the
-golden tests know exactly which fields are allowed to differ, and only those.
+output in front of a pilot.
 
-If you change either behaviour, change the registry and this file together.
+They come in two kinds, and the difference matters:
+
+- **Registered divergences.** The port's output differs and the golden fixture
+  is allowed to differ with it. Each is registered in `test/divergence.ts` so
+  the tests know exactly which fields may move, and only those.
+- **Neutralised divergences.** The algorithm is the same but the *inputs* or
+  the *segmentation* differ, so `golden.test.ts` hands the port the oracle's
+  version - `analyse(text, { polarDb: ORACLE_POLARS, splitCircuit: false })` -
+  and the comparison stays exact to the last decimal. Writing off `legs` on
+  every fixture as expected drift would have cost far more than it bought. The
+  shipped behaviour is covered by `test/legs.test.ts` and `test/unit.test.ts`
+  instead.
+
+If you change any of this, change the registry, the tests and this file
+together.
 
 ---
 
 ## C-record declaration header parsed as a task point
 
-**Fixtures affected:** `thermal-day` (and any real trace with a declared task)
+**Fixtures affected:** `thermal-day`, `declared-300k` (and any real trace with
+a declared task)
 **Fields:** `task`
 
 The oracle accepts a C record as a turnpoint when its first two characters
@@ -55,6 +69,25 @@ whole plan view to a dot.
 The zero-coordinate `TAKEOFF` and `LANDING` records that some loggers emit are
 still dropped by the oracle's own `abs(lat) > 0.001` test, which the port keeps.
 
+### And the records either side of the task
+
+The port also labels each record with the role its position in the block gives
+it - `takeoff`, `start`, `turn`, `finish`, `landing` - using the turnpoint
+count in the header, or the names where the header is too short to carry one.
+This is an addition rather than a divergence: `task` still contains every
+record the oracle keeps, in the same order, with a `role` key the oracle has no
+equivalent of.
+
+It matters for everything downstream. A declaration with real take-off and
+landing coordinates has two records that are not the task, and counting them
+turns a 300 km triangle into a five-leg course by way of the launch point, with
+two phantom legs drawn across the plan view. The oracle prints the names and
+stops, so it never had to decide; this app draws the task, sums it and publishes
+the total, so it does.
+
+`declared-300k` is the fixture for it: a spec-shaped block of header, take-off,
+start, two turnpoints, finish and landing, declaring 300.3 km.
+
 ---
 
 ## Polar matched by first key rather than longest
@@ -91,9 +124,11 @@ now match `Duo Discus`. `Discus 2c`, `Discus b`, `Grob Twin Astir`,
 `Astir CS 77`, `Nimbus 3DM`, `Ventus 2cxa`, `LAK-17a`, `JS1-C`, `K-21` and the
 rest are unchanged.
 
-`polars.json` itself is left byte-identical to the vendored copy. Reordering
-the file would have fixed the Duo and left the next such pair to be found by
-whoever hit it.
+Reordering the database would have fixed the Duo and left the next such pair to
+be found by whoever hit it, so the matching rule is what changed. The shipped
+database has since been regenerated for a different reason - see *Neutralised:
+the polar database is corrected*, below - but the ordering bug is in the
+matching, not the file, and it is still there in the oracle's copy.
 
 ---
 
@@ -147,6 +182,77 @@ midnight twice, but nothing depends on that being true.
 
 On the same fixture the port gives a 1424-second flight from 23:44:01 to
 00:07:45 with a maximum gap of 1 second, which is what the file contains.
+
+---
+
+## Neutralised: the polar database is corrected
+
+**Fixtures affected:** all of them, via `legs`
+**Neutralised by:** `analyse(text, { polarDb: ORACLE_POLARS })` in the golden tests
+
+`reference/polars.json` fits each glider's curve through three points that were
+chosen by eye, and they do not reproduce the glider they name. Best glide comes
+out around 15% optimistic across the whole file:
+
+| | file | published |
+| --- | --- | --- |
+| PIK-20D | 47.3:1 | 41:1 |
+| Standard Cirrus | 43.1:1 | 36.5:1 |
+| LS4 | 46.5:1 | 40.5:1 |
+| ASW 20 | 48.6:1 | 42.5:1 |
+| Nimbus | 71.0:1 | 57:1 |
+
+That number is printed on the page - "that assumes best glide near 47:1" - so
+the error was visible, and every airmass figure below it is measured against
+the same curve: too flat a polar subtracts too little sink and reads the air as
+better than it was.
+
+**What the port does instead:** `src/data/polars.json` is generated by
+`test/tools/make-polars.ts` from published best-glide figures, so each curve
+reproduces the glider on the label. `npm test` re-derives every entry and fails
+on one that has drifted from its own `published` block.
+
+A quadratic cannot hold both the published best glide and the published minimum
+sink - real polars are peakier than a parabola - so it is fitted to best glide,
+and minimum sink can read up to 15% out. The cruise range, where every airmass
+figure is computed, is the part that is right. `make-polars.ts` explains the
+arithmetic.
+
+`reference/polars.json` is left exactly as vendored: it is the oracle's input,
+not ours, and the golden tests feed it to the port so the comparison is the
+algorithm rather than the data.
+
+---
+
+## Neutralised: the final glide is split from the circuit
+
+**Fixtures affected:** every fixture that lands, via `legs`
+**Neutralised by:** `analyse(text, { splitCircuit: false })` in the golden tests
+
+A flight that lands ends in one unbroken stretch of straight flight, from the
+top of the last glide all the way to the ground. The oracle labels a leg a
+circuit if it *ends* near the landing height:
+
+```python
+L["circuit"] = landed and F[b]["alt"] < land_alt + 250
+```
+
+Which makes the whole of that stretch the circuit. On the `wave` fixture that
+is a 35-minute "circuit" from 3,774 m; on a 300 km flight it is a landing
+twenty-four minutes long, most of it final glide. It is also the wrong shape:
+averaging the glide home together with the approach buries the one figure worth
+having, the L/D and airmass of the glide.
+
+**What the port does instead:** cuts the run at circuit entry - the first fix
+of the final descent below 300 m above the landing field, staying below to the
+end - and reports the two halves as `final glide` and `circuit`. A leg is only
+a final glide if it was gliding home: down more than 300 m at half a metre a
+second or better, so a ridge beat that finishes the day 400 m lower is not one.
+Only the circuit is excluded from the rising-air figure; a final glide samples
+the day like any other leg.
+
+The cut is skipped where either half would come out under the minute a leg has
+to run for, and a trace that never lands has no circuit at all.
 
 ---
 

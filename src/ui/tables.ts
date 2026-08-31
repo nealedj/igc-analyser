@@ -198,7 +198,7 @@ export function legTable(a: Analysis, on: TableHandlers = {}): HTMLElement {
       l.sd_ias_kmh === null ? '-' : fmt(l.sd_ias_kmh, 0),
       l.mean_airmass_ms === undefined ? '-' : climbFmt(l.mean_airmass_ms),
       l.frac_rising_air === undefined ? '-' : percent(l.frac_rising_air),
-      l.circuit ? 'circuit' : '',
+      l.kind && l.kind !== 'cruise' ? l.kind : '',
     ];
     const tr = row(cells, { class: `clickable${l.circuit ? ' muted' : ''}`, tabindex: '0' });
     const select = () => on.onSelect?.({ start: l.start, end: l.end });
@@ -219,6 +219,7 @@ export function legTable(a: Analysis, on: TableHandlers = {}): HTMLElement {
       `Airmass is the vertical motion of the air the glider flew through, after ` +
         `subtracting polar sink. It assumes ${polar.name ?? 'no polar'}` +
         (polar.matched ? '' : ', which is a guess') +
+        (polar.best_ld !== null ? ` at ${fmt(polar.best_ld, 0)}:1` : '') +
         `, and the flight-mean wind. Crosswind legs are worst affected. ` +
         `L/D over the ground is not wind-corrected.`,
     ),
@@ -226,6 +227,18 @@ export function legTable(a: Analysis, on: TableHandlers = {}): HTMLElement {
       ['Time', 'Dur', 'Distance', 'Height', 'L/D gnd', 'IAS km/h', 'sd', `Airmass ${climbUnit()}`, 'Rising', ''],
       rows,
     ),
+    legs.some((l) => l.kind === 'final glide')
+      ? h(
+          'p',
+          { class: 'caption' },
+          'The final glide and the circuit are separate rows. The run from the top of ' +
+            'the glide to the ground is one stretch of straight flight in the trace, ' +
+            'and reported whole it reads as a very long landing; it is cut where the ' +
+            'glider settled below 1,000 ft above the field. Only the circuit is ' +
+            'excluded from the rising-air figure - a final glide samples the day like ' +
+            'any other leg.',
+        )
+      : null,
     a.result.rising_air_fraction !== null
       ? h(
           'p',

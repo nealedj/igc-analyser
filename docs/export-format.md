@@ -110,9 +110,20 @@ The declared task from the file's `C` records, or `declared: false`.
 | `declared` | boolean | |
 | `shape` | string \| null | `"triangle"`, `"out and return"`, `"quadrilateral"`, `"straight distance"`, `"N-leg closed course"`, `"N-leg task"`. |
 | `closed` | boolean \| null | Finishes within 1 km of where it started. |
-| `distanceM` | number \| null | Sum of the great-circle legs. This is the declared distance, not a scored one: no start line, no finish ring, no observation zones. |
-| `points[]` | array | `{ name, lat, lon }`, in declared order. `name` may be `null`. |
-| `legs[]` | array | `{ from, to, distanceM }`. |
+| `distanceM` | number \| null | Sum of the great-circle legs, **start to finish only**. This is the declared distance, not a scored one: no start line, no finish ring, no observation zones. |
+| `turnpoints` | integer \| null | Turnpoints between the start and the finish. |
+| `points[]` | array | `{ name, lat, lon, role }`, in declared order: the start, the turnpoints and the finish. `name` and `role` may be `null`. |
+| `legs[]` | array | `{ from, to, distanceM, bearingDeg }`. `bearingDeg` is the initial great-circle track, degrees true. |
+| `takeoff` | object \| null | `{ name, lat, lon }`, where the declaration carried one. |
+| `landing` | object \| null | `{ name, lat, lon }`, where the declaration carried one. |
+| `declaration` | object \| null | `{ description, declaredDate, declaredTime, turnpoints }` from the header that opens the `C` block. Any field may be `null`. |
+
+`role` is `"start"`, `"turn"` or `"finish"` - `points[]` never contains the
+take-off or landing records, which are in `takeoff` and `landing` instead.
+Their coordinates are the launch and expected landing site, and counting them
+as turnpoints inflates the distance and adds two phantom legs. `role` is
+`null` where the `C` block was too irregular to lay out by position, in which
+case every point in it is treated as a scoring point.
 
 Zero-coordinate `TAKEOFF` and `LANDING` records are dropped, as is the
 declaration header that opens a `C` block.
@@ -197,7 +208,15 @@ One entry per straight leg over a minute, after release.
 | `meanIasKmh`, `sdIasKmh` | number \| null | |
 | `meanAirmassMs` | number \| null | **See below.** |
 | `fracRisingAir` | number \| null | 0 to 1. |
-| `circuit` | boolean | Part of the landing circuit; excluded from `risingAirFraction`. |
+| `kind` | string | `"cruise"`, `"final glide"` or `"circuit"`. An open set: match on the values you know and treat the rest as a cruise. |
+| `circuit` | boolean | `kind === "circuit"`. Part of the landing circuit; excluded from `risingAirFraction`. |
+
+The last straight run of a flight that landed reaches from the top of the last
+glide to the ground, so reported whole it is a final glide and a circuit in one
+row - on a 300 km flight, a "landing" twenty minutes long. It is cut where the
+glider settled below 300 m above the landing field and the two halves are
+reported separately. Only the circuit half is excluded from
+`risingAirFraction`: a final glide samples the air like any other leg.
 
 `meanAirmassMs` is the vertical motion of the air the glider flew through:
 measured height change minus polar sink for the speed and density it was flown

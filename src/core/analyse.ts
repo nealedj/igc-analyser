@@ -15,7 +15,7 @@ import { bestWindow, circleStats, perCircle } from './climbs.ts';
 import type { CircleStats, PerCircle } from './climbs.ts';
 import { estimateWind } from './wind.ts';
 import type { Wind } from './wind.ts';
-import { analyseLeg } from './legs.ts';
+import { analyseLeg, circuitEntry } from './legs.ts';
 import type { Leg } from './legs.ts';
 import { loadPolar } from './polar.ts';
 import type { LoadPolarOptions, PolarDb } from './polar.ts';
@@ -33,6 +33,12 @@ export interface AnalyseOptions {
   polar?: LoadPolarOptions;
   /** Override the polar database. Defaults to the bundled one. */
   polarDb?: PolarDb;
+  /**
+   * Split the last straight run at circuit entry, so a final glide is not
+   * reported as a 24-minute landing. Default true. The oracle does not do
+   * this; `false` reproduces its leg list. See test/DIVERGENCE.md.
+   */
+  splitCircuit?: boolean;
 }
 
 export interface ProfilePoint {
@@ -121,7 +127,7 @@ export interface Analysis {
 }
 
 export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
-  const { header, fixes: F, task, warnings } = parseIgc(text);
+  const { header, fixes: F, task, declaration, warnings } = parseIgc(text);
   const altitudeSource = chooseAltitude(F);
   addKinematics(F);
   const rs = segment(F, opts.minCircleRate ?? 6.0);
@@ -194,10 +200,47 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   const bestLd = match.polar ? match.polar.bestLd() : null;
 
   const legRuns = rs.filter((r) => !r.circ && F[r.a].t >= relT && F[r.b].t - F[r.a].t >= 60);
+
+  // The last glide of a cross-country ends on the ground, so the run that
+  // starts at the top of it and the run that flies the circuit are one run.
+  // Reported whole it reads as a 24-minute landing, which is both wrong and
+  // the wrong shape: the interesting part is the glide, and averaging it with
+  // the approach buries it. So the run is cut at circuit entry and the two
+  // halves are reported as what they are. See test/DIVERGENCE.md.
+  const entry = opts.splitCircuit === false ? null : circuitEntry(F, landed);
+  const split: { a: number; b: number }[] = [];
+  for (const r of legRuns) {
+    const cut = entry !== null && entry > r.a && entry < r.b ? entry : null;
+    // A cut that leaves either half under the minute a leg has to run for
+    // gains nothing: the whole run is classified instead.
+    if (cut !== null && F[cut].t - F[r.a].t >= 60 && F[r.b].t - F[cut].t >= 60) {
+      split.push({ a: r.a, b: cut }, { a: cut, b: r.b });
+    } else {
+      split.push({ a: r.a, b: r.b });
+    }
+  }
+
+  // Without a circuit entry - a trace that stops in the air, or the oracle's
+  // segmentation asked for - the oracle's rule is all there is: a leg that
+  // ends near the height the log stops at.
   const landAlt = F[F.length - 1].alt;
-  const legs: Leg[] = legRuns.map((r) => {
+  const legs: Leg[] = split.map((r, i) => {
     const leg = analyseLeg(F, r.a, r.b, match.polar, windVec);
-    leg.circuit = landed && F[r.b].alt < landAlt + 250;
+    if (entry === null) {
+      leg.kind = landed && F[r.b].alt < landAlt + 250 ? 'circuit' : 'cruise';
+    } else if (r.a >= entry) {
+      leg.kind = 'circuit';
+    } else {
+      // The last leg before the circuit is the final glide only if it was
+      // actually gliding home: down more than 300 m, and coming down at half
+      // a metre a second or better. A ridge beat that ends the day 400 m
+      // lower after half an hour is soaring, and calling it a final glide
+      // would be as wrong as calling it a circuit.
+      const last = i === split.length - 1 || split[i + 1].a >= entry;
+      const descent = leg.duration_s > 0 ? -leg.dh_m / leg.duration_s : 0;
+      leg.kind = last && leg.dh_m < -300 && descent >= 0.5 ? 'final glide' : 'cruise';
+    }
+    leg.circuit = leg.kind === 'circuit';
     return leg;
   });
 
@@ -224,7 +267,7 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
     },
     track_distance_m: dist,
     task,
-    task_summary: summariseTask(task),
+    task_summary: summariseTask(task, declaration),
     phase: {
       circling_s: circlingS,
       soaring_s: soaringS,
