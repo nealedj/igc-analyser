@@ -9,17 +9,65 @@
 import type { Analysis, Climb } from '../core/index.ts';
 import type { Leg } from '../core/index.ts';
 import { h } from './dom.ts';
+import type { Span } from './interact.ts';
 import {
   airspeed, climb as climbFmt, climbUnit, distance, duration, fmt, height, hms, percent, windSpeed,
 } from './units.ts';
 
 export interface TableHandlers {
   /** Called when a row is chosen, to scrub the figures to that span. */
-  onSelect?: (span: { start: number; end: number } | null) => void;
+  onSelect?: (span: Span | null) => void;
+  /** The span currently scrubbed to, so the row that set it reads as pressed. */
+  selected?: Span | null;
 }
 
 function row(cells: (string | Node)[], attrs: Record<string, string> = {}): HTMLElement {
   return h('tr', attrs, ...cells.map((c) => h('td', {}, c)));
+}
+
+/**
+ * A row that scrubs both figures to its own span.
+ *
+ * What is focusable and announced is a real button in the first cell, not the
+ * row. `role="button"` on the `<tr>` would have been the smaller change and is
+ * the wrong one: ARIA makes the children of a button presentational, so the
+ * cells - which are the entire content of the row - would stop being reachable
+ * at all, and a screen reader would be told there is a button here without
+ * being able to say what is in it. A button inside the row leaves the table a
+ * table, gets Enter and Space for nothing because it is a button, and can
+ * carry `aria-pressed`, so which row is currently scrubbed to is something you
+ * can hear rather than only something you can see.
+ *
+ * The whole row stays clickable for the pointer, which is how it already
+ * behaved.
+ */
+function selectableRow(
+  cells: (string | Node)[],
+  label: string,
+  span: Span,
+  on: TableHandlers,
+  cls = '',
+): HTMLElement {
+  const chosen = on.selected?.start === span.start && on.selected?.end === span.end;
+  const go = h(
+    'button',
+    { type: 'button', class: 'row-go', 'aria-label': label, 'aria-pressed': String(chosen) },
+    cells[0],
+  );
+  // Clicking the row that is already scrubbed to clears it, which is what the
+  // caption under each table has always promised.
+  const toggle = (): void => on.onSelect?.(chosen ? null : span);
+  go.addEventListener('click', toggle);
+
+  const tr = row([go, ...cells.slice(1)], {
+    class: `clickable${chosen ? ' chosen' : ''}${cls ? ` ${cls}` : ''}`,
+  });
+  // The pointer path. A click that landed on the button has already been
+  // handled, and handling it again here would toggle it straight back.
+  tr.addEventListener('click', (e) => {
+    if (!(e.target as Element).closest('.row-go')) toggle();
+  });
+  return tr;
 }
 
 function table(head: string[], rows: HTMLElement[], cls = ''): HTMLElement {
@@ -66,13 +114,13 @@ export function climbTable(a: Analysis, on: TableHandlers = {}): HTMLElement {
       geometry && c.radius_m !== null ? `${fmt(c.radius_m, 0)} m` : '-',
       airspeed(c.airspeed_kmh / 3.6),
     ];
-    const tr = row(cells, { class: geometry ? 'clickable' : 'clickable thin', tabindex: '0' });
-    const select = () => on.onSelect?.({ start: c.start, end: c.end });
-    tr.addEventListener('click', select);
-    tr.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Enter') select();
-    });
-    return tr;
+    return selectableRow(
+      cells,
+      `Climb ${i + 1}, ${hms(c.start)}, ${climbFmt(c.avg_climb_ms)}: show on the figures`,
+      { start: c.start, end: c.end },
+      on,
+      geometry ? '' : 'thin',
+    );
   });
 
   const thin = climbs.filter((c) => c.circles < 1.5).length;
@@ -102,7 +150,12 @@ export function climbTable(a: Analysis, on: TableHandlers = {}): HTMLElement {
       ['#', 'Time', 'Dur', 'Gain', 'Avg', 'Best 30s', 'Circles', 'Dir', 't/360', 'Bank', 'Radius', 'IAS'],
       rows,
     ),
-    h('p', { class: 'caption' }, 'Click a climb to scrub both figures to it. Click again to clear.'),
+    h(
+      'p',
+      { class: 'caption' },
+      'Click a climb to scrub both figures to it, or tab to its number and press ' +
+        'Enter or Space. Choosing it again clears.',
+    ),
   );
 }
 
@@ -200,13 +253,14 @@ export function legTable(a: Analysis, on: TableHandlers = {}): HTMLElement {
       l.frac_rising_air === undefined ? '-' : percent(l.frac_rising_air),
       l.kind && l.kind !== 'cruise' ? l.kind : '',
     ];
-    const tr = row(cells, { class: `clickable${l.circuit ? ' muted' : ''}`, tabindex: '0' });
-    const select = () => on.onSelect?.({ start: l.start, end: l.end });
-    tr.addEventListener('click', select);
-    tr.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Enter') select();
-    });
-    return tr;
+    return selectableRow(
+      cells,
+      `${l.kind ?? 'cruise'} leg, ${hms(l.start)} to ${hms(l.end)}, ` +
+        `${distance(l.distance_m, 1)}: show on the figures`,
+      { start: l.start, end: l.end },
+      on,
+      l.circuit ? 'muted' : '',
+    );
   });
 
   return h(
@@ -226,6 +280,12 @@ export function legTable(a: Analysis, on: TableHandlers = {}): HTMLElement {
     table(
       ['Time', 'Dur', 'Distance', 'Height', 'L/D gnd', 'IAS km/h', 'sd', `Airmass ${climbUnit()}`, 'Rising', ''],
       rows,
+    ),
+    h(
+      'p',
+      { class: 'caption' },
+      'Click a leg to scrub both figures to it, or tab to its start time and press ' +
+        'Enter or Space. Choosing it again clears.',
     ),
     legs.some((l) => l.kind === 'final glide')
       ? h(

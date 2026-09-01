@@ -257,8 +257,19 @@ table.data thead th {
 table.data tbody tr { border-bottom: 1px solid var(--rule); }
 table.data tbody td { font-variant-numeric: tabular-nums; }
 table.data tr.clickable { cursor: pointer; }
-table.data tr.clickable:hover, table.data tr.clickable:focus-visible { background: var(--accent-soft); }
+table.data tr.clickable:hover,
+table.data tr.clickable:focus-within,
+table.data tr.chosen { background: var(--accent-soft); }
 table.data tr.muted td { color: var(--fg-faint); }
+
+/* The focusable, announced part of a clickable row: see selectableRow in
+   tables.ts for why it is a button in the first cell rather than the row. It
+   inherits everything, so the row still reads as a row of figures. */
+.row-go {
+  font: inherit; color: inherit; background: none; border: 0; padding: 0;
+  cursor: pointer; font-variant-numeric: inherit; text-align: inherit;
+}
+.row-go[aria-pressed='true'] { font-weight: 600; }
 table.compact { font-size: 0.83rem; }
 
 .caveat {

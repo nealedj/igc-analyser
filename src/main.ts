@@ -204,11 +204,14 @@ function renderTables(
   }
 
   const onSelect = (s: Span | null) => link.setSelection(s);
+  // `selected` is what lets a row say it is the one currently scrubbed to, and
+  // lets choosing it again clear rather than re-select.
+  const handlers = { onSelect, selected: span };
   host.append(
-    climbTable(filtered, { onSelect }),
+    climbTable(filtered, handlers),
     perCirclePanel(filtered) ?? h('div', { class: 'nothing' }),
     windPanel(filtered) ?? h('div', { class: 'nothing' }),
-    legTable(filtered, { onSelect }),
+    legTable(filtered, handlers),
   );
 }
 
