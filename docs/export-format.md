@@ -124,6 +124,7 @@ The declared task from the file's `C` records, or `declared: false`.
 | `takeoff` | object \| null | `{ name, lat, lon }`, where the declaration carried one. |
 | `landing` | object \| null | `{ name, lat, lon }`, where the declaration carried one. |
 | `declaration` | object \| null | `{ description, declaredDate, declaredTime, turnpoints }` from the header that opens the `C` block. Any field may be `null`. |
+| `flown` | object \| null | The trace checked against the declaration. **See below.** |
 
 `role` is `"start"`, `"turn"` or `"finish"` - `points[]` never contains the
 take-off or landing records, which are in `takeoff` and `landing` instead.
@@ -134,6 +135,38 @@ case every point in it is treated as a scoring point.
 
 Zero-coordinate `TAKEOFF` and `LANDING` records are dropped, as is the
 declaration header that opens a `C` block.
+
+#### `task.flown`
+
+What the trace did about the declaration. `null` where there was no task to
+check against.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `zone` | string | `"cylinder"` or `"fai-sector"`. The rule turnpoints were tested with. |
+| `radiusM` | number | Cylinder radius, and the start and finish zone under both rules. |
+| `complete` | boolean | **Every point reached, in order.** Check this before quoting `speedMs`. |
+| `note` | string | What happened, in words. Where the sequence broke, and how close it got. |
+| `startAssumed` | boolean | **`true` means no start crossing was found after release**, so the clock runs from release: `durationS` is an upper bound and `speedMs` a lower one. |
+| `startTime` | string \| null | `HH:MM:SSZ`. The last exit from the start zone before the first turnpoint, never earlier than release. |
+| `finishTime` | string \| null | First entry into the finish zone after the last turnpoint. `null` unless `complete`. |
+| `durationS` | integer \| null | Finish minus start. |
+| `speedMs` | number \| null | `task.distanceM / durationS`. |
+| `turnpointsRounded`, `turnpointsDeclared` | integer | |
+| `points[]` | array | `{ name, role, zone, time, closestM, closestAt }`, in course order. |
+
+`points[].time` is when that point counted: for a turnpoint or the finish, when
+its zone was first achieved; for the start, the time the clock runs from.
+`null` means it was never reached, and `closestM` is then the useful figure —
+the difference between a turnpoint missed by 400 m and a task abandoned on the
+second leg.
+
+**`speedMs` is not a scored speed, and `complete: true` is not a claim.** The
+observation zone is an assumption made by whoever produced the bundle, not
+something the IGC file carries: real start lines, start rings and finish rings
+are none of the shapes offered here. There are no start height or time limits,
+no airspace and no penalties. A page publishing the speed should publish `zone`
+and `radiusM` with it, and should not call it a badge or ladder result.
 
 ### `phase`
 
@@ -220,10 +253,14 @@ One entry per straight leg over a minute, after release.
 
 The last straight run of a flight that landed reaches from the top of the last
 glide to the ground, so reported whole it is a final glide and a circuit in one
-row - on a 300 km flight, a "landing" twenty minutes long. It is cut where the
-glider settled below 300 m above the landing field and the two halves are
-reported separately. Only the circuit half is excluded from
-`risingAirFraction`: a final glide samples the air like any other leg.
+row - on a 300 km flight, a "landing" twenty minutes long. It is cut and the
+two halves are reported separately. Where the declared task was finished the
+cut is at the finish, which is where the glide was actually aimed; otherwise it
+is where the glider settled below 300 m above the landing field. A finish
+crossed low happens after the glider is already below circuit height, and in
+that case the finish still wins: nothing before it is the circuit. Only the
+circuit half is excluded from `risingAirFraction`: a final glide samples the
+air like any other leg.
 
 `meanAirmassMs` is the vertical motion of the air the glider flew through:
 measured height change minus polar sink for the speed and density it was flown

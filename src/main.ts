@@ -9,7 +9,7 @@
 
 import './style.css';
 import { analyse } from './core/index.ts';
-import type { Analysis, PolarDb } from './core/index.ts';
+import type { Analysis, ObservationZone, PolarDb } from './core/index.ts';
 import polarsDb from './data/polars.json' with { type: 'json' };
 import { clear, h } from './ui/dom.ts';
 import { dropzone } from './ui/dropzone.ts';
@@ -42,6 +42,8 @@ const state: {
   releaseTime: number | undefined;
   /** Operator's wing loading, kg/m², or unset for the published one. */
   loading: number | undefined;
+  /** Observation zone the trace is checked against the declaration with. */
+  taskZone: ObservationZone;
   selection: Span | null;
 } = {
   name: '',
@@ -50,6 +52,7 @@ const state: {
   polarForce: undefined,
   releaseTime: undefined,
   loading: undefined,
+  taskZone: 'cylinder',
   selection: null,
 };
 
@@ -100,6 +103,7 @@ function load(name: string, text: string): void {
   // starts from what the file itself says.
   state.releaseTime = undefined;
   state.loading = undefined;
+  state.taskZone = 'cylinder';
   render();
 }
 
@@ -113,6 +117,7 @@ function render(): void {
         ...(state.loading === undefined ? {} : { loadingKgM2: state.loading }),
       },
       releaseTime: state.releaseTime,
+      taskZone: { kind: state.taskZone },
     });
   } catch (e) {
     showError(
@@ -157,6 +162,8 @@ function render(): void {
         release: { time: a.result.launch.release, confident: a.result.launch.release_confident },
         loading: state.loading,
         referenceLoading: a.result.polar.reference_loading_kg_m2,
+        taskZone: state.taskZone,
+        hasTask: a.result.task_flight !== null,
       },
       {
         onUnits: () => render(),
@@ -179,6 +186,10 @@ function render(): void {
         onLoading: (kg) => {
           if (kg === state.loading) return;
           state.loading = kg;
+          render();
+        },
+        onTaskZone: (z) => {
+          state.taskZone = z;
           render();
         },
       },

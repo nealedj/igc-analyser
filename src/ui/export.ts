@@ -43,6 +43,43 @@ function iso(date: string | undefined, t: number): string | null {
 const round = (x: number | null | undefined, dp = 3): number | null =>
   x === null || x === undefined || !Number.isFinite(x) ? null : Number(x.toFixed(dp));
 
+/**
+ * The trace checked against the declaration.
+ *
+ * `complete` is the flag a consumer must read before quoting `speedKmh`: the
+ * speed is over the declared distance, so it only means anything when every
+ * point was actually reached, in order. `zone` and `radiusM` are the
+ * assumption the whole block rests on, and travel with it.
+ */
+function flown(a: Analysis): Record<string, unknown> | null {
+  const t = a.result.task_flight;
+  if (!t) return null;
+  return {
+    zone: t.zone,
+    radiusM: t.radius_m,
+    complete: t.complete,
+    note: t.note,
+    // True means no start crossing was found after release and the clock runs
+    // from release itself, so `durationS` is an upper bound and `speedMs` a
+    // lower one. Publish the speed with this or not at all.
+    startAssumed: t.start_assumed,
+    startTime: t.start === null ? null : z(t.start),
+    finishTime: t.finish === null ? null : z(t.finish),
+    durationS: t.duration_s === null ? null : Math.round(t.duration_s),
+    speedMs: round(t.speed_ms, 3),
+    turnpointsRounded: t.turnpoints_rounded,
+    turnpointsDeclared: t.turnpoints_declared,
+    points: t.points.map((p) => ({
+      name: p.name,
+      role: p.role,
+      zone: p.zone,
+      time: p.time === null ? null : z(p.time),
+      closestM: round(p.closest_m, 1),
+      closestAt: z(p.closest_at),
+    })),
+  };
+}
+
 /** A declared point, or null where the file did not carry one. */
 const point = (p: TaskPoint | null): Record<string, unknown> | null =>
   p === null ? null : { name: p.name || null, lat: p.lat, lon: p.lon };
@@ -134,6 +171,9 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
           })),
           takeoff: point(ts.takeoff),
           landing: point(ts.landing),
+          // What the trace did about the declaration, under the observation
+          // zone the page was set to. Not a score: see docs/export-format.md.
+          flown: flown(a),
           declaration: ts.declaration
             ? {
                 description: ts.declaration.description || null,
@@ -156,6 +196,7 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
           legs: [],
           takeoff: null,
           landing: null,
+          flown: null,
           declaration: null,
         },
     phase: {

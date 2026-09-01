@@ -289,6 +289,9 @@ table.compact { font-size: 0.83rem; }
   margin: 0 0 0.75rem; font-size: 0.86rem; color: var(--fg-dim);
   max-width: var(--measure); border-left: 2px solid var(--rule-strong); padding-left: 0.7rem;
 }
+.task-flown { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+.task-flown h3 { font-size: 0.9rem; margin: 0 0 0.5rem; color: var(--fg-dim); font-weight: 600; }
+
 .circle-block { margin-top: 1rem; }
 .circle-block h3 { font-size: 0.86rem; margin: 0 0 0.35rem; color: var(--fg-dim); font-weight: 600; }
 .nothing { display: none; }

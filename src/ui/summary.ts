@@ -10,7 +10,7 @@
 import type { Analysis } from '../core/index.ts';
 import { h } from './dom.ts';
 import {
-  distance, duration, height, hms, percent, windSpeed, climb, fmt,
+  distance, duration, height, hms, percent, windSpeed, climb, fmt, taskSpeed,
 } from './units.ts';
 
 /**
@@ -178,11 +178,13 @@ export function summaryPanel(a: Analysis): HTMLElement {
  * from one that only counts thermals. Take-off and landing records are not in
  * the distance - they are where the glider left from, not part of the task.
  *
- * This is the declaration, not a claim. Nothing here checks the trace against
- * it: no start line, no observation zones, no finish ring, and no scored
- * distance. That is a scoring program's job and it is stated rather than
- * implied, because a number that looks like a badge distance and is not one is
- * worse than no number.
+ * The trace is checked against it - start, rounding, finish, speed - under an
+ * observation zone the reader chooses, because the file does not carry one.
+ * That is still not a claim: a scoring program has the zones the organisers
+ * set, the start height and time limits, the airspace and a penalty schedule,
+ * and this has a declaration and a track log. The difference is stated rather
+ * than implied, because a number that looks like a badge speed and is not one
+ * is worse than no number.
  */
 export function taskPanel(a: Analysis): HTMLElement {
   const t = a.result.task_summary;
@@ -267,14 +269,106 @@ export function taskPanel(a: Analysis): HTMLElement {
         h('tbody', {}, ...legRows),
       ),
     ),
+    taskFlownBlock(a),
     h(
       'p',
       { class: 'caveat' },
-      'This is what was declared, not what was scored. The distance is the ' +
-        'great-circle sum of the legs between the declared points; there is no start ' +
-        'line, no observation zone and no finish ring here, and the trace is not ' +
-        'checked against the declaration. A badge or ladder claim needs a scoring ' +
-        'program.',
+      'This is what was declared and what the trace did about it, not what was ' +
+        'scored. The distance is the great-circle sum of the legs between the ' +
+        'declared points. The observation zone is an assumption set above, not ' +
+        'something the file carries: real start lines, start rings and finish rings ' +
+        'are none of the shapes offered. There are no height or time limits here and ' +
+        'no airspace. A badge or ladder claim needs a scoring program.',
+    ),
+  );
+}
+
+/**
+ * The trace against the declaration: where it started, what it rounded, and
+ * the speed that falls out.
+ *
+ * "103 km/h round the 300" is the number a pilot came for, so it is the lede
+ * when there is one. When there is not, the closest approach to the point that
+ * broke the sequence is the useful thing - it is the difference between a
+ * turnpoint missed by 400 m and a task abandoned at the second leg.
+ */
+function taskFlownBlock(a: Analysis): HTMLElement | null {
+  const t = a.result.task_flight;
+  if (!t) return null;
+
+  const zoneName =
+    t.zone === 'cylinder'
+      ? `${distance(t.radius_m, t.radius_m % 1000 === 0 ? 0 : 1)} cylinders`
+      : 'FAI 90° sectors';
+
+  const rows = t.points.map((p) =>
+    h(
+      'tr',
+      { class: p.time === null ? 'muted' : '' },
+      h('td', {}, p.name),
+      h('td', {}, p.role),
+      h('td', {}, p.time === null ? 'not reached' : hms(p.time)),
+      h('td', {}, p.closest_m < 1000 ? `${fmt(p.closest_m, 0)} m` : distance(p.closest_m, 1)),
+    ),
+  );
+
+  return h(
+    'div',
+    { class: 'task-flown' },
+    h('h3', {}, 'Flown against the declaration'),
+    h(
+      'p',
+      { class: t.complete ? 'lede' : 'caveat' },
+      t.complete && t.speed_ms !== null && t.duration_s !== null
+        ? `Round the ${distance(t.distance_m, 1)} ${a.result.task_summary?.shape ?? 'task'} ` +
+          `in ${duration(t.duration_s)} - ` +
+          `${taskSpeed(t.speed_ms)}. Started ${hms(t.start!)}, finished ${hms(t.finish!)}, ` +
+          `all ${t.turnpoints_declared} turnpoint${t.turnpoints_declared === 1 ? '' : 's'} rounded.`
+        : `Not a completed round of the declared task: ${t.note}. ` +
+          `${t.turnpoints_rounded} of ${t.turnpoints_declared} turnpoint` +
+          `${t.turnpoints_declared === 1 ? '' : 's'} rounded.`,
+    ),
+    // A start taken at release is not a start that was flown, and the speed
+    // that comes out of it is a ceiling rather than a measurement.
+    t.start_assumed && t.complete
+      ? h(
+          'p',
+          { class: 'caveat' },
+          'The glider left the start zone on tow and never came back to it, so there is ' +
+            'no start crossing to time from. The clock runs from release instead, which ' +
+            'makes the elapsed time the longest it can have been and the speed the ' +
+            'slowest - the real task speed is this or better.',
+        )
+      : null,
+    h(
+      'div',
+      { class: 'table-scroll' },
+      h(
+        'table',
+        { class: 'data compact' },
+        h(
+          'thead',
+          {},
+          h(
+            'tr',
+            {},
+            h('th', { scope: 'col' }, 'Point'),
+            h('th', { scope: 'col' }, 'Role'),
+            h('th', { scope: 'col' }, 'Reached'),
+            h('th', { scope: 'col' }, 'Closest'),
+          ),
+        ),
+        h('tbody', {}, ...rows),
+      ),
+    ),
+    h(
+      'p',
+      { class: 'caption' },
+      `Turnpoints tested as ${zoneName}; the start and the finish as ` +
+        `${distance(t.radius_m, t.radius_m % 1000 === 0 ? 0 : 1)} cylinders, because a ` +
+        `sector needs a leg either side. The start is the last time the glider left the ` +
+        `start zone before the first turnpoint, so a push-out and a change of mind does ` +
+        `not count. Change the zone above and every time here moves with it.`,
     ),
   );
 }

@@ -23,17 +23,23 @@ loaded it works with the network off.
   centring improved, decayed or oscillated.
 - **Wind** — from the drift of whole circles, with the circle count behind each
   estimate so you can see when it is not evidence.
-- **The declared task** — what the `C` records say the flight was flown
-  against: the shape, the legs with their distances and tracks, and the total.
-  The take-off and landing records are labelled and kept out of it, because
-  counting them turns a 300 km triangle into a five-leg course by way of the
-  launch point. It is the declaration, not a score: no observation zones and no
-  claim, and the page says so.
+- **The declared task, and whether it was flown** — what the `C` records say
+  the flight was flown against: the shape, the legs with their distances and
+  tracks, and the total. The take-off and landing records are labelled and kept
+  out of it, because counting them turns a 300 km triangle into a five-leg
+  course by way of the launch point. Then the trace against it: where the start
+  was crossed, when each turnpoint was rounded, the finish, and the speed —
+  "103 km/h round the 300", which is the number a pilot came back for. The
+  observation zone is a choice on the page, a 1 km cylinder or the FAI sector,
+  because the file does not carry one. It is still not a score, and the page
+  says so: no start height or time limits, no airspace, no penalties.
 - **Straight legs** — the airmass energy balance: the vertical motion of the
   air the glider flew through, after subtracting polar sink for the speed and
   density it was flown at. The final glide and the landing circuit are one
   unbroken run in the trace and are reported as two, so a twenty-minute glide
-  home is not filed as a very long landing.
+  home is not filed as a very long landing. Where the task was finished the cut
+  is at the finish rather than at circuit height, which is where the glide was
+  aimed.
 - **What the trace cannot show** — stated above the figures it affects rather
   than in a footnote. A coarse trace cannot show centring inside a circle, and
   every airmass figure is only as good as the assumed polar.

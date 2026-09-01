@@ -13,7 +13,7 @@
  * bung; this is where they say so.
  */
 
-import type { PolarDb } from '../core/index.ts';
+import type { ObservationZone, PolarDb } from '../core/index.ts';
 import { h } from './dom.ts';
 import type { TraceColouring } from './trace.ts';
 import { hms, setUnits, units } from './units.ts';
@@ -31,6 +31,10 @@ export interface ControlState {
   releaseTime: number | undefined;
   /** The release the analysis is currently using, for the hint next to it. */
   release: { time: number; confident: boolean };
+  /** Observation zone the trace is checked against the declaration with. */
+  taskZone: ObservationZone;
+  /** True when the file declares a task, so the zone control has a job. */
+  hasTask: boolean;
 }
 
 export interface ControlHandlers {
@@ -39,6 +43,7 @@ export interface ControlHandlers {
   onPolar: (name: string | undefined) => void;
   onRelease: (seconds: number | undefined) => void;
   onLoading: (kgM2: number | undefined) => void;
+  onTaskZone: (zone: ObservationZone) => void;
 }
 
 function segmented<T extends string>(
@@ -99,6 +104,19 @@ export function controls(db: PolarDb, state: ControlState, on: ControlHandlers):
     releaseControl(state, on.onRelease),
     h('div', { class: 'control' }, h('span', { class: 'control-label' }, 'Polar'), select),
     loadingControl(state, on.onLoading),
+    // Only where there is a declaration to check against; on a local soaring
+    // flight the control would be a setting with nothing to set.
+    state.hasTask
+      ? segmented<ObservationZone>(
+          'Observation zone',
+          [
+            { value: 'cylinder', label: '1 km cylinder' },
+            { value: 'fai-sector', label: 'FAI sector' },
+          ],
+          state.taskZone,
+          on.onTaskZone,
+        )
+      : null,
   );
 }
 

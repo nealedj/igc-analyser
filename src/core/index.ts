@@ -33,6 +33,14 @@ export type {
 } from './polar.ts';
 export { analyseLeg, circuitEntry, CIRCUIT_M } from './legs.ts';
 export { summariseTask, scoringPoints, haversine, bearing } from './task.ts';
+export { flyTask, FAI_SECTOR_CYLINDER_M } from './taskflight.ts';
+export type {
+  FlyTaskOptions,
+  ObservationZone,
+  TaskFlight,
+  TaskPointFlown,
+  TaskZoneOptions,
+} from './taskflight.ts';
 export type { TaskLeg, TaskSummary } from './task.ts';
 export type { Leg, LegKind } from './legs.ts';
 export type {

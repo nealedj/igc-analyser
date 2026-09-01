@@ -22,6 +22,8 @@ import type { LoadPolarOptions, PolarDb } from './polar.ts';
 import polarsDb from '../data/polars.json' with { type: 'json' };
 import { summariseTask } from './task.ts';
 import type { TaskSummary } from './task.ts';
+import { flyTask } from './taskflight.ts';
+import type { TaskFlight, TaskZoneOptions } from './taskflight.ts';
 import { median, pyMod, pyRound } from './pyutil.ts';
 
 export interface AnalyseOptions {
@@ -34,11 +36,14 @@ export interface AnalyseOptions {
   /** Override the polar database. Defaults to the bundled one. */
   polarDb?: PolarDb;
   /**
-   * Split the last straight run at circuit entry, so a final glide is not
-   * reported as a 24-minute landing. Default true. The oracle does not do
-   * this; `false` reproduces its leg list. See test/DIVERGENCE.md.
+   * Split the last straight run at circuit entry, and at the task finish where
+   * there is one, so a final glide is not reported as a 24-minute landing.
+   * Default true. The oracle does not do this; `false` reproduces its leg
+   * list. See test/DIVERGENCE.md.
    */
   splitCircuit?: boolean;
+  /** Observation zone to check the trace against the declaration with. */
+  taskZone?: TaskZoneOptions;
 }
 
 export interface ProfilePoint {
@@ -91,6 +96,8 @@ export interface Result {
   task: TaskPoint[];
   /** Declared task distances. Not in the oracle's JSON, which stops at names. */
   task_summary: TaskSummary | null;
+  /** The trace checked against that declaration: start, rounding, speed. */
+  task_flight: TaskFlight | null;
   phase: {
     circling_s: number;
     soaring_s: number;
@@ -221,17 +228,46 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   // the wrong shape: the interesting part is the glide, and averaging it with
   // the approach buries it. So the run is cut at circuit entry and the two
   // halves are reported as what they are. See test/DIVERGENCE.md.
-  const entry = opts.splitCircuit === false ? null : circuitEntry(F, landed);
+  const summary = summariseTask(task, declaration);
+  // The release is part of it: a start cannot happen on tow. It has to be the
+  // release actually in use, override included, or the operator would fix the
+  // release time and watch the task speed refuse to move.
+  const flight = flyTask(F, summary, { ...opts.taskZone, releaseTime: relT });
+
+  // Where the task was finished, that is where the final glide ends: the glide
+  // home is the run down to the finish, and the join and the circuit after it
+  // are a different thing that happens to be in the same straight run. Cutting
+  // at circuit height instead puts the last minutes of the arrival into the
+  // glide, which is the one figure the exercise is about.
+  const finishAt =
+    opts.splitCircuit === false || flight === null || flight.finish === null
+      ? null
+      : indexAtTime(F, flight.finish);
+
+  // A finish crossed low - which is most of them, on a club field - happens
+  // after the glider has already come down through circuit height, so the two
+  // cuts arrive in the wrong order. The finish wins: nothing before it is the
+  // circuit, whatever height it was flown at.
+  const rawEntry = opts.splitCircuit === false ? null : circuitEntry(F, landed);
+  const entry =
+    rawEntry !== null && finishAt !== null ? Math.max(rawEntry, finishAt) : rawEntry;
+
   const split: { a: number; b: number }[] = [];
   for (const r of legRuns) {
-    const cut = entry !== null && entry > r.a && entry < r.b ? entry : null;
-    // A cut that leaves either half under the minute a leg has to run for
-    // gains nothing: the whole run is classified instead.
-    if (cut !== null && F[cut].t - F[r.a].t >= 60 && F[r.b].t - F[cut].t >= 60) {
-      split.push({ a: r.a, b: cut }, { a: cut, b: r.b });
-    } else {
-      split.push({ a: r.a, b: r.b });
+    const cuts = [...new Set([finishAt, entry])]
+      .filter((c): c is number => c !== null && c > r.a && c < r.b)
+      .sort((x, y) => x - y);
+    // A cut that leaves either piece under the minute a leg has to run for
+    // gains nothing, so the pieces are accumulated and a cut that would make
+    // one too short is dropped rather than taken.
+    let a = r.a;
+    for (const cut of cuts) {
+      if (F[cut].t - F[a].t >= 60 && F[r.b].t - F[cut].t >= 60) {
+        split.push({ a, b: cut });
+        a = cut;
+      }
     }
+    split.push({ a, b: r.b });
   }
 
   // Without a circuit entry - a trace that stops in the air, or the oracle's
@@ -245,14 +281,20 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
     } else if (r.a >= entry) {
       leg.kind = 'circuit';
     } else {
-      // The last leg before the circuit is the final glide only if it was
-      // actually gliding home: down more than 300 m, and coming down at half
-      // a metre a second or better. A ridge beat that ends the day 400 m
-      // lower after half an hour is soaring, and calling it a final glide
-      // would be as wrong as calling it a circuit.
-      const last = i === split.length - 1 || split[i + 1].a >= entry;
-      const descent = leg.duration_s > 0 ? -leg.dh_m / leg.duration_s : 0;
-      leg.kind = last && leg.dh_m < -300 && descent >= 0.5 ? 'final glide' : 'cruise';
+      // A leg that ends at the finish is the final glide, full stop: the task
+      // says where the glide was aimed, so nothing has to be inferred from how
+      // far it descended. Without a finish the shape of the run is all there
+      // is - down more than 300 m at half a metre a second or better - because
+      // a ridge beat that ends the day 400 m lower after half an hour is
+      // soaring, and calling that a final glide would be as wrong as calling
+      // it a circuit.
+      if (finishAt !== null) {
+        leg.kind = r.b === finishAt ? 'final glide' : 'cruise';
+      } else {
+        const isLast = i === split.length - 1 || split[i + 1].a >= entry;
+        const descent = leg.duration_s > 0 ? -leg.dh_m / leg.duration_s : 0;
+        leg.kind = isLast && leg.dh_m < -300 && descent >= 0.5 ? 'final glide' : 'cruise';
+      }
     }
     leg.circuit = leg.kind === 'circuit';
     return leg;
@@ -282,7 +324,8 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
     },
     track_distance_m: dist,
     task,
-    task_summary: summariseTask(task, declaration),
+    task_summary: summary,
+    task_flight: flight,
     phase: {
       circling_s: circlingS,
       soaring_s: soaringS,
@@ -370,4 +413,16 @@ function hhmmss(t: number): string {
     `${String(Math.floor(s / 60) % 60).padStart(2, '0')}:` +
     `${String(s % 60).padStart(2, '0')}`
   );
+}
+
+/** Index of the first fix at or after a time. The fixes are sorted. */
+function indexAtTime(F: Fix[], t: number): number {
+  let lo = 0;
+  let hi = F.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (F[mid].t < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
