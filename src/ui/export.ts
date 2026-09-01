@@ -103,7 +103,7 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
     schemaVersion: SCHEMA_VERSION,
     generator: {
       name: 'igc-analyser',
-      url: 'https://nealedj.github.io/igc-analyser/',
+      url: 'https://igc.neale.dev/',
       generatedAt: (opts.generatedAt ?? new Date()).toISOString().replace(/\.\d+Z$/, 'Z'),
     },
     source: {

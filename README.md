@@ -4,7 +4,7 @@ Drop a glider flight log in a browser and get a soaring debrief: the phase
 split, the climbs and their circle geometry, the wind, and what the air was
 doing on the straight legs.
 
-**[nealedj.github.io/igc-analyser](https://nealedj.github.io/igc-analyser/)**
+**[igc.neale.dev](https://igc.neale.dev/)**
 
 ![The analyser: what the trace can and cannot show, the flight summary, and the declared 300 km triangle with the trace checked against it - start, both turnpoints, finish and the speed](docs/screenshot.png)
 
@@ -163,11 +163,12 @@ a consuming page can be as honest as this one is.
 ## Deployment
 
 Pushes to `main` build and publish to GitHub Pages via
-[`.github/workflows/deploy.yml`](.github/workflows/), as a project page at
-`https://nealedj.github.io/igc-analyser/`.
+[`.github/workflows/deploy.yml`](.github/workflows/), served from the root of
+`https://igc.neale.dev/`.
 
 One-time setup, in the repository settings: **Pages → Build and deployment →
-Source: GitHub Actions**. Nothing else; no DNS, no branch to create.
+Source: GitHub Actions**, then **Custom domain: `igc.neale.dev`** with **Enforce
+HTTPS** ticked once the certificate has been issued.
 
 The workflow passes `enablement: true` to `actions/configure-pages`, so it can
 also make that switch itself on a repository where Pages has never been set up.
@@ -177,10 +178,14 @@ whose only script tag points at `src/main.ts`. The browser will not execute
 TypeScript, so the result is a blank page from a deploy that looked like it
 succeeded. The workflow now fails loudly rather than letting that ship.
 
-To move it to a custom domain later, set `BASE_PATH: /` in the workflow, add a
-step writing the domain to `dist/CNAME`, and point a DNS `CNAME` record at the
-Pages host. No source change is needed either way — that is what the
-`BASE_PATH` indirection is for.
+The domain side is a DNS `CNAME` for `igc` pointing at `nealedj.github.io.`,
+plus the workflow's `Custom domain` step, which writes `igc.neale.dev` into
+`dist/CNAME` on every deploy. That file is not optional housekeeping: Pages
+reads the domain from the published artefact, so a deploy without it clears the
+setting and the site drops back to github.io. Going the other way — back to a
+project page under `nealedj.github.io/igc-analyser/` — is `BASE_PATH:
+/igc-analyser/` and dropping that step. No source change is needed either way;
+that is what the `BASE_PATH` indirection is for.
 
 ## Licence
 

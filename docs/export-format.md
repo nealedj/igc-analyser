@@ -51,7 +51,7 @@ Integer. `1`. Check it before reading anything else.
 ### `generator`
 
 ```json
-{ "name": "igc-analyser", "url": "https://nealedj.github.io/igc-analyser/", "generatedAt": "2026-08-30T19:41:02Z" }
+{ "name": "igc-analyser", "url": "https://igc.neale.dev/", "generatedAt": "2026-08-30T19:41:02Z" }
 ```
 
 ### `source`

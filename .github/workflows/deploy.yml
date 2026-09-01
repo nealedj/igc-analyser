@@ -41,14 +41,20 @@ jobs:
       - name: Fixtures still match the vendored oracle
         run: npm run verify-fixtures
 
-      # Published as a project page at nealedj.github.io/igc-analyser/, so the
-      # assets have to be addressed from that subpath. Nothing in the source
-      # knows about it: moving to a custom domain at a root is BASE_PATH=/ plus
-      # a step writing dist/CNAME, and no code change.
+      # Served from the root of a custom domain, so the base path is /.
+      # Nothing in the source knows about either arrangement; going back to a
+      # project page under nealedj.github.io/igc-analyser/ is BASE_PATH set to
+      # that subpath and dropping the CNAME step, and no code change.
       - name: Build
         run: npm run build
         env:
-          BASE_PATH: /igc-analyser/
+          BASE_PATH: /
+
+      # Pages reads the custom domain from this file on every deploy. Without
+      # it, a deploy silently clears the domain configured in the settings UI
+      # and the site goes back to answering only on github.io.
+      - name: Custom domain
+        run: echo igc.neale.dev > dist/CNAME
 
       # No server-side routing, but a 404 that loads the app keeps a mistyped
       # deep link from being a dead end.
@@ -65,12 +71,16 @@ jobs:
             echo "::error::dist/index.html still points at the TypeScript source."
             exit 1
           fi
-          if ! grep -q '/igc-analyser/assets/.*\.js' dist/index.html; then
+          if ! grep -q '"/assets/.*\.js"' dist/index.html; then
             echo "::error::dist/index.html has no bundle at the expected base path."
             grep -o '<script[^>]*>' dist/index.html || true
             exit 1
           fi
-          echo "dist/index.html references $(grep -o '/igc-analyser/assets/[^"]*\.js' dist/index.html)"
+          if [ "$(cat dist/CNAME)" != "igc.neale.dev" ]; then
+            echo "::error::dist/CNAME is not the custom domain; the deploy would drop it."
+            exit 1
+          fi
+          echo "dist/index.html references $(grep -o '/assets/[^"]*\.js' dist/index.html)"
 
       # enablement: true lets this switch Pages to the Actions source itself.
       # Without it, a repository whose Pages source is still "Deploy from a
