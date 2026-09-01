@@ -22,7 +22,7 @@ export { circleStats, perCircle, bestWindow } from './climbs.ts';
 export type { CircleStats, PerCircle } from './climbs.ts';
 export { estimateWind } from './wind.ts';
 export type { Wind, WindEstimate } from './wind.ts';
-export { Polar, loadPolar, solve3, sigma } from './polar.ts';
+export { Polar, loadPolar, solve3, solveN, sigma } from './polar.ts';
 export type {
   PolarDb,
   PolarEntry,

@@ -178,8 +178,14 @@ at typical club loading, not manufacturer-certified figures. Treat any figure
 derived from them accordingly — the app says which polar it used and why.
 
 They are generated, not hand-written: `npm run make-polars` derives each
-glider's three points from its published best glide, so the fitted curve
-reproduces the glider on the label rather than something 15% better, and
-`npm test` fails on an entry that has drifted from its own published figures.
-The arithmetic, and what a quadratic can and cannot represent, is documented in
-[`test/tools/make-polars.ts`](test/tools/).
+glider's points from published figures, so the fitted curve reproduces the
+glider on the label rather than something 15% better, and `npm test` fails on an
+entry that has drifted from its own published figures.
+
+Each curve is anchored at two published places, best glide and a point out at
+cruise speed, because best glide alone leaves the curvature to an assumption and
+the curvature is what high-speed sink is made of. Anchored at one, these curves
+read about 13% low above 150 km/h and up to 41% low — on exactly the fast final
+glides where the airmass figure gets used. The arithmetic, what a quadratic can
+and cannot represent, and why a derived cubic is worse rather than better, are
+documented in [`test/tools/make-polars.ts`](test/tools/).
