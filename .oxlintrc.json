@@ -1,0 +1,53 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  // The house style here is consistent and was maintained by hand. The point
+  // of a linter in this repository is to make that free rather than effortful,
+  // so it enforces what the code already does and stays silent otherwise. A
+  // rule that would reflow correct code earns its place or is turned off here
+  // with the reason, rather than being suppressed line by line at the site.
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+
+  "rules": {
+    // Already true everywhere. These cost nothing and stop the first drift.
+    "eslint/eqeqeq": "error",
+    "eslint/no-var": "error",
+    "eslint/prefer-const": ["error", { "destructuring": "all" }],
+    "typescript/consistent-type-imports": "error",
+
+    // Deliberate, everywhere it appears. `zip.ts` writes entries in order and
+    // `import.ts` tries candidate URLs in order and stops at the first that
+    // answers; running either in parallel would change what they do.
+    "eslint/no-await-in-loop": "off",
+
+    // Local helpers next to their one caller are the style throughout, and
+    // hoisting them to module scope to save an allocation reads worse.
+    "unicorn/consistent-function-scoping": "off",
+
+    // Every `.sort()` in this codebase is already on a copy.
+    "unicorn/no-array-sort": "off",
+
+    // `W_` in trace.ts is the width after the viewBox is cut to the content,
+    // sitting alongside `W`, which is the width it was fitted against.
+    "eslint/no-underscore-dangle": "off",
+
+    // A handler assigned to a FileReader that is thrown away after one read.
+    "unicorn/prefer-add-event-listener": "off"
+  },
+
+  "overrides": [
+    {
+      // The shipped code has no `any` in it and should not acquire one. The
+      // tests do, deliberately: they probe the export as a consumer would,
+      // through untyped JSON.
+      "files": ["src/**"],
+      "rules": { "typescript/no-explicit-any": "error" }
+    }
+  ],
+
+  "ignorePatterns": ["dist"]
+}

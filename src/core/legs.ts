@@ -7,11 +7,17 @@
  * flight, and it is only ever as good as the assumed polar — which is why
  * nothing here should be shown without the polar note attached.
  *
+ * The wind comes in as a function of height rather than a vector, because a leg
+ * that starts at 1,800 m and finishes at 700 m was flown through more than one
+ * wind, and on a crosswind leg that is the difference between an airspeed that
+ * makes sense and one that does not.
+ *
  * Port of `analyse_leg`.
  */
 
-import type { Fix } from './types.ts';
-import { Polar, sigma } from './polar.ts';
+import type { Fix, WindField } from './types.ts';
+import { sigma } from './polar.ts';
+import type { Polar } from './polar.ts';
 import { mean, pstdev } from './pyutil.ts';
 
 /**
@@ -78,7 +84,7 @@ export function analyseLeg(
   a: number,
   b: number,
   polar: Polar | null,
-  wind: readonly [number, number] | null,
+  wind: WindField | null,
 ): Leg {
   const seg = F.slice(a, b + 1);
   const dur = seg[seg.length - 1].t - seg[0].t;
@@ -86,7 +92,6 @@ export function analyseLeg(
   let dist = 0;
   for (let i = 0; i < seg.length - 1; i++) if (seg[i].dt > 0) dist += seg[i].step;
   const dh = seg[seg.length - 1].alt - seg[0].alt;
-  const [wx, wy] = wind ?? [0, 0];
 
   const ias: number[] = [];
   const ws: [number, number][] = [];
@@ -96,6 +101,10 @@ export function analyseLeg(
   for (let i = 0; i < seg.length - 1; i++) {
     const f = seg[i];
     if (!f.good) continue;
+    // The wind is asked for at the height this fix was flown at, so a leg that
+    // crosses the band uses the air it was actually in rather than the mean of
+    // air it was in for part of the time.
+    const [wx, wy] = wind ? wind(f.alt) : [0, 0];
     const tas = Math.hypot(f.vx - wx, f.vy - wy);
     const s = sigma(f.alt);
     const eas = tas * Math.sqrt(s);

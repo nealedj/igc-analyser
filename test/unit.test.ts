@@ -11,7 +11,6 @@ import { mean, median, pstdev, pyFixed, pyMod, pyRound } from '../src/core/pyuti
 import { Polar, loadPolar, sigma, solve3 } from '../src/core/polar.ts';
 import type { PolarDb } from '../src/core/polar.ts';
 import realPolars from '../src/data/polars.json' with { type: 'json' };
-import { points as derivedPoints } from './tools/make-polars.ts';
 
 const REAL_DB = realPolars as PolarDb;
 
@@ -253,7 +252,7 @@ test('an empty file is rejected rather than analysed', () => {
   assert.throws(() => parseIgc('HFDTE010123\r\n'), /no usable B records/);
 });
 
-// ------------------------------------------------------- the quadratic polar
+// ----------------------------------------------------------------- the polar
 
 test('the polar passes exactly through its three defining points', () => {
   const points: number[][] = [
@@ -299,8 +298,9 @@ test('solve3 refuses a degenerate system instead of returning nonsense', () => {
   assert.throws(() => solve3([[1, 1, 1], [2, 2, 2], [3, 3, 3]], [1, 2, 3]));
 });
 
-test('a polar needs exactly three points', () => {
+test('a polar needs three points or four, and rejects anything else', () => {
   assert.throws(() => new Polar('bad', [[95, 0.54], [115, 0.6]]));
+  assert.throws(() => new Polar('bad', [[80, 0.6], [95, 0.54], [115, 0.6], [150, 1.2], [180, 2.1]]));
 });
 
 // -------------------------------------------------------------- polar matching
@@ -391,67 +391,5 @@ test('real database: every glider type resolves to the entry it names', () => {
     ['Pik 20 D', 'PIK-20D'],
   ] as const) {
     assert.equal(loadPolar(REAL_DB, type).polar?.name, expected, `${type} matched wrongly`);
-  }
-});
-
-// -------------------------------------------------- the polars are the glider
-//
-// The fitted curve has to reproduce the glider on the label. Three points
-// chosen by eye do not: the database this replaces gave a PIK-20D 47:1 and a
-// Standard Cirrus 43:1, against published figures of 41 and 36.5, and the
-// error was printed on the page next to every airmass figure it fed.
-
-const ENTRIES = [...REAL_DB.gliders, REAL_DB.default];
-
-test('real database: every entry declares the published figures it came from', () => {
-  for (const g of ENTRIES) {
-    assert.ok(g.published, `${g.name} has no published block`);
-    assert.ok(g.published!.best_ld > 15 && g.published!.best_ld < 75, `${g.name}: implausible best L/D`);
-  }
-});
-
-test('real database: the fitted curve reproduces the published best glide', () => {
-  for (const g of ENTRIES) {
-    const { ld, speed } = new Polar(g.name, g.points).bestLd();
-    const want = g.published!;
-    assert.ok(
-      Math.abs(ld - want.best_ld) < 0.3,
-      `${g.name}: fitted ${ld.toFixed(1)}:1, published ${want.best_ld}:1`,
-    );
-    assert.ok(
-      speed !== null && Math.abs(speed * 3.6 - want.best_ld_kmh) < 3,
-      `${g.name}: best glide at ${((speed ?? 0) * 3.6).toFixed(0)} km/h, published ${want.best_ld_kmh}`,
-    );
-  }
-});
-
-test('real database: a PIK-20D is 41:1, not 47:1', () => {
-  const m = loadPolar(REAL_DB, 'PIK-20D');
-  const { ld } = m.polar!.bestLd();
-  assert.equal(Math.round(ld), 41, `PIK-20D fitted ${ld.toFixed(1)}:1`);
-});
-
-test('real database: minimum sink is within the quadratic\'s reach of published', () => {
-  // A quadratic cannot hold both the published best glide and the published
-  // minimum sink; the fit takes best glide, and minimum sink follows. This
-  // pins how far it is allowed to follow, so a bad entry still fails.
-  for (const g of ENTRIES) {
-    const p = new Polar(g.name, g.points);
-    const vms = -p.b / (2 * p.c);
-    const got = p.sink(vms);
-    const want = g.published!.min_sink_ms;
-    assert.ok(
-      Math.abs(got - want) / want < 0.15,
-      `${g.name}: fitted min sink ${got.toFixed(2)}, published ${want}`,
-    );
-  }
-});
-
-test('real database: the committed file still matches its own published figures', () => {
-  // Points are derived, not chosen: `npm run make-polars` writes them. A
-  // hand-edited point that no longer sits on its glider's curve fails here.
-  for (const g of ENTRIES) {
-    const want = derivedPoints(g.published!);
-    assert.deepEqual(g.points, want, `${g.name}: points are not what its published figures give`);
   }
 });

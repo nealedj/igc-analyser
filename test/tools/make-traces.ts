@@ -252,9 +252,9 @@ class Flight {
    * heading is refreshed for the same reason, and the descent rate is set to
    * arrive at roughly the height asked for.
    */
-  finalGlide(p: Pt, arriveAlt: number, tas: number): this {
+  finalGlide(p: Pt, arriveAlt: number, tas: number, within = 1500): this {
     let guard = 0;
-    while (this.rangeTo(p) > 1500 && this.alt > arriveAlt && guard++ < 400) {
+    while (this.rangeTo(p) > within && this.alt > arriveAlt && guard++ < 400) {
       const range = this.rangeTo(p);
       const secs = Math.min(60, Math.max(15, range / tas));
       // Spread the height left over the distance left, so the glide arrives
@@ -582,15 +582,19 @@ const traces: Record<string, () => string> = {
     // working the band between 900 m and 1,700 m.
     const band = { bottom: 900, top: 1700, climb: 2.2, tas: 33, sink: -1.5 };
     f.ground(120).tow(300, 2.6, 30).circleTo(1600, 2.0, 18, 28);
-    f.toward(tp1, band).circleTo(1750, 2.4, -18, 28);
-    f.toward(tp2, band).circleTo(1900, 2.6, 18, 28);
+    // Rounded properly, inside the kilometre a modern turnpoint cylinder is,
+    // because a fixture called "flown and finished" has to have been.
+    f.toward(tp1, band, 700).circleTo(1750, 2.4, -18, 28);
+    f.toward(tp2, band, 700).circleTo(1900, 2.6, 18, 28);
     // The last climb of the day, then twenty minutes of final glide at speed,
     // arriving over the finish at 350 m and joining straight in. The glide and
     // the circuit are one unbroken straight run in the trace, which is the
     // whole point of the fixture.
     f.toward(runIn, band, 2000);
     f.circleTo(1900, 2.2, -18, 28);
-    f.finalGlide(home, 350, 36);
+    // Across the declared finish, then the join and the circuit. Two different
+    // things in one straight run, which is what the leg split is for.
+    f.finalGlide(home, 350, 36, 400);
     f.land(200);
     return f.build();
   },

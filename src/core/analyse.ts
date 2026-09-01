@@ -13,7 +13,7 @@ import { segment } from './segment.ts';
 import { findLaunch } from './launch.ts';
 import { bestWindow, circleStats, perCircle } from './climbs.ts';
 import type { CircleStats, PerCircle } from './climbs.ts';
-import { estimateWind } from './wind.ts';
+import { estimateWind, windField, windProfileLevels } from './wind.ts';
 import type { Wind } from './wind.ts';
 import { analyseLeg, circuitEntry } from './legs.ts';
 import type { Leg } from './legs.ts';
@@ -22,7 +22,9 @@ import type { LoadPolarOptions, PolarDb } from './polar.ts';
 import polarsDb from '../data/polars.json' with { type: 'json' };
 import { summariseTask } from './task.ts';
 import type { TaskSummary } from './task.ts';
-import { median, pyRound } from './pyutil.ts';
+import { flyTask } from './taskflight.ts';
+import type { TaskFlight, TaskZoneOptions } from './taskflight.ts';
+import { median, pyMod, pyRound } from './pyutil.ts';
 
 export interface AnalyseOptions {
   /** Turn-rate threshold for circling, deg/s. */
@@ -34,11 +36,20 @@ export interface AnalyseOptions {
   /** Override the polar database. Defaults to the bundled one. */
   polarDb?: PolarDb;
   /**
-   * Split the last straight run at circuit entry, so a final glide is not
-   * reported as a 24-minute landing. Default true. The oracle does not do
-   * this; `false` reproduces its leg list. See test/DIVERGENCE.md.
+   * Split the last straight run at circuit entry, and at the task finish where
+   * there is one, so a final glide is not reported as a 24-minute landing.
+   * Default true. The oracle does not do this; `false` reproduces its leg
+   * list. See test/DIVERGENCE.md.
    */
   splitCircuit?: boolean;
+  /** Observation zone to check the trace against the declaration with. */
+  taskZone?: TaskZoneOptions;
+  /**
+   * Interpolate the wind between the per-climb estimates by height rather than
+   * using one flight-mean vector everywhere. Default true. The oracle has no
+   * equivalent; `false` reproduces its airspeeds. See test/DIVERGENCE.md.
+   */
+  windProfile?: boolean;
 }
 
 export interface ProfilePoint {
@@ -79,11 +90,20 @@ export interface Result {
     note: string;
     /** Not in the oracle's JSON: whether the release is a real detection. */
     release_confident: boolean;
+    /**
+     * Not in the oracle's JSON: the release was supplied rather than found.
+     * `release_confident` is true either way, so it cannot tell them apart,
+     * and a figure the operator asserted is a different claim from one the
+     * trace supports.
+     */
+    release_override: boolean;
   };
   track_distance_m: number;
   task: TaskPoint[];
   /** Declared task distances. Not in the oracle's JSON, which stops at names. */
   task_summary: TaskSummary | null;
+  /** The trace checked against that declaration: start, rounding, speed. */
+  task_flight: TaskFlight | null;
   phase: {
     circling_s: number;
     soaring_s: number;
@@ -95,6 +115,13 @@ export interface Result {
     working_band: { bottom_m: number; top_m: number } | null;
   };
   wind: Wind | null;
+  /**
+   * Distinct heights the wind profile rests on. Not in the oracle's JSON.
+   * 0 or 1 means every figure used one flight-mean vector, because there was
+   * not enough to interpolate between; 2 or more means the wind was taken at
+   * the height each fix was flown at.
+   */
+  wind_levels: number;
   climbs: Climb[];
   legs: Leg[];
   /** Which polar was used and on what evidence. Not in the oracle's JSON. */
@@ -104,6 +131,11 @@ export interface Result {
     matched: boolean;
     best_ld: number | null;
     best_ld_speed_ms: number | null;
+    min_sink_ms: number | null;
+    /** Wing loading the published curve is for, kg/m²; null where unknown. */
+    reference_loading_kg_m2: number | null;
+    /** Loading it was scaled to, kg/m²; null when it was left as published. */
+    loading_kg_m2: number | null;
   };
   /** Fraction of straight flight spent in rising air, circuit legs excluded. */
   rising_air_fraction: number | null;
@@ -137,14 +169,15 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   let releaseConfident = launch.confident;
   let note = launch.note;
   if (opts.releaseTime !== undefined) {
-    const want = opts.releaseTime;
-    let bi = 0;
-    for (let i = 1; i < F.length; i++) {
-      if (Math.abs(F[i].t - want) < Math.abs(F[bi].t - want)) bi = i;
-    }
-    release = bi;
+    const found = nearestFix(F, opts.releaseTime);
+    release = found.index;
     releaseConfident = true;
-    note += '  [release time supplied by the operator]';
+    note +=
+      `  [release taken as ${hhmmss(F[release].t)}, supplied by the operator` +
+      // Asking for a time the trace does not cover snaps to its nearest end,
+      // which is a silently different answer from the one that was asked for.
+      (found.gap_s > 30 ? `; the nearest fix is ${Math.round(found.gap_s)} s away` : '') +
+      ']';
   }
 
   let dist = 0;
@@ -175,10 +208,11 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
     (r) => r.circ && F[r.a].t >= relT && F[r.b].alt - F[r.a].alt > 0 && F[r.b].t - F[r.a].t >= 30,
   );
   const wind = estimateWind(F, climbRuns);
-  const windVec = wind ? wind.vector : null;
+  const field = windField(wind, opts.windProfile !== false);
+  const windLevels = opts.windProfile === false ? 0 : windProfileLevels(wind);
 
   const climbs: Climb[] = climbRuns.map((r) => ({
-    ...circleStats(F, r.a, r.b, windVec),
+    ...circleStats(F, r.a, r.b, field),
     best_30s_ms: bestWindow(F, r.a, r.b),
     per_circle: perCircle(F, r.a, r.b),
   }));
@@ -198,6 +232,7 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   // ------------------------------------------------------------ cruise legs
   const match = loadPolar((opts.polarDb ?? (polarsDb as PolarDb)), header.glider_type, opts.polar ?? {});
   const bestLd = match.polar ? match.polar.bestLd() : null;
+  const minSink = match.polar ? match.polar.minSink() : null;
 
   const legRuns = rs.filter((r) => !r.circ && F[r.a].t >= relT && F[r.b].t - F[r.a].t >= 60);
 
@@ -207,17 +242,46 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   // the wrong shape: the interesting part is the glide, and averaging it with
   // the approach buries it. So the run is cut at circuit entry and the two
   // halves are reported as what they are. See test/DIVERGENCE.md.
-  const entry = opts.splitCircuit === false ? null : circuitEntry(F, landed);
+  const summary = summariseTask(task, declaration);
+  // The release is part of it: a start cannot happen on tow. It has to be the
+  // release actually in use, override included, or the operator would fix the
+  // release time and watch the task speed refuse to move.
+  const flight = flyTask(F, summary, { ...opts.taskZone, releaseTime: relT });
+
+  // Where the task was finished, that is where the final glide ends: the glide
+  // home is the run down to the finish, and the join and the circuit after it
+  // are a different thing that happens to be in the same straight run. Cutting
+  // at circuit height instead puts the last minutes of the arrival into the
+  // glide, which is the one figure the exercise is about.
+  const finishAt =
+    opts.splitCircuit === false || flight === null || flight.finish === null
+      ? null
+      : indexAtTime(F, flight.finish);
+
+  // A finish crossed low - which is most of them, on a club field - happens
+  // after the glider has already come down through circuit height, so the two
+  // cuts arrive in the wrong order. The finish wins: nothing before it is the
+  // circuit, whatever height it was flown at.
+  const rawEntry = opts.splitCircuit === false ? null : circuitEntry(F, landed);
+  const entry =
+    rawEntry !== null && finishAt !== null ? Math.max(rawEntry, finishAt) : rawEntry;
+
   const split: { a: number; b: number }[] = [];
   for (const r of legRuns) {
-    const cut = entry !== null && entry > r.a && entry < r.b ? entry : null;
-    // A cut that leaves either half under the minute a leg has to run for
-    // gains nothing: the whole run is classified instead.
-    if (cut !== null && F[cut].t - F[r.a].t >= 60 && F[r.b].t - F[cut].t >= 60) {
-      split.push({ a: r.a, b: cut }, { a: cut, b: r.b });
-    } else {
-      split.push({ a: r.a, b: r.b });
+    const cuts = [...new Set([finishAt, entry])]
+      .filter((c): c is number => c !== null && c > r.a && c < r.b)
+      .sort((x, y) => x - y);
+    // A cut that leaves either piece under the minute a leg has to run for
+    // gains nothing, so the pieces are accumulated and a cut that would make
+    // one too short is dropped rather than taken.
+    let a = r.a;
+    for (const cut of cuts) {
+      if (F[cut].t - F[a].t >= 60 && F[r.b].t - F[cut].t >= 60) {
+        split.push({ a, b: cut });
+        a = cut;
+      }
     }
+    split.push({ a, b: r.b });
   }
 
   // Without a circuit entry - a trace that stops in the air, or the oracle's
@@ -225,20 +289,26 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   // ends near the height the log stops at.
   const landAlt = F[F.length - 1].alt;
   const legs: Leg[] = split.map((r, i) => {
-    const leg = analyseLeg(F, r.a, r.b, match.polar, windVec);
+    const leg = analyseLeg(F, r.a, r.b, match.polar, field);
     if (entry === null) {
       leg.kind = landed && F[r.b].alt < landAlt + 250 ? 'circuit' : 'cruise';
     } else if (r.a >= entry) {
       leg.kind = 'circuit';
     } else {
-      // The last leg before the circuit is the final glide only if it was
-      // actually gliding home: down more than 300 m, and coming down at half
-      // a metre a second or better. A ridge beat that ends the day 400 m
-      // lower after half an hour is soaring, and calling it a final glide
-      // would be as wrong as calling it a circuit.
-      const last = i === split.length - 1 || split[i + 1].a >= entry;
-      const descent = leg.duration_s > 0 ? -leg.dh_m / leg.duration_s : 0;
-      leg.kind = last && leg.dh_m < -300 && descent >= 0.5 ? 'final glide' : 'cruise';
+      // A leg that ends at the finish is the final glide, full stop: the task
+      // says where the glide was aimed, so nothing has to be inferred from how
+      // far it descended. Without a finish the shape of the run is all there
+      // is - down more than 300 m at half a metre a second or better - because
+      // a ridge beat that ends the day 400 m lower after half an hour is
+      // soaring, and calling that a final glide would be as wrong as calling
+      // it a circuit.
+      if (finishAt !== null) {
+        leg.kind = r.b === finishAt ? 'final glide' : 'cruise';
+      } else {
+        const isLast = i === split.length - 1 || split[i + 1].a >= entry;
+        const descent = leg.duration_s > 0 ? -leg.dh_m / leg.duration_s : 0;
+        leg.kind = isLast && leg.dh_m < -300 && descent >= 0.5 ? 'final glide' : 'cruise';
+      }
     }
     leg.circuit = leg.kind === 'circuit';
     return leg;
@@ -264,10 +334,12 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
       type: launch.type,
       note,
       release_confident: releaseConfident,
+      release_override: opts.releaseTime !== undefined,
     },
     track_distance_m: dist,
     task,
-    task_summary: summariseTask(task, declaration),
+    task_summary: summary,
+    task_flight: flight,
     phase: {
       circling_s: circlingS,
       soaring_s: soaringS,
@@ -278,6 +350,7 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
       working_band: workingBand,
     },
     wind,
+    wind_levels: windLevels,
     climbs,
     legs,
     polar: {
@@ -286,6 +359,9 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
       matched: match.matched,
       best_ld: bestLd ? bestLd.ld : null,
       best_ld_speed_ms: bestLd ? bestLd.speed : null,
+      min_sink_ms: minSink ? minSink.sink : null,
+      reference_loading_kg_m2: match.referenceLoading,
+      loading_kg_m2: match.loading,
     },
     rising_air_fraction: totT ? upT / totT : null,
     profile: F.map((f) => ({
@@ -315,4 +391,53 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   };
 
   return { result, fixes: F, runs: rs };
+}
+
+/**
+ * The fix nearest a time of day, and how far off it is.
+ *
+ * A release time is seconds since midnight UTC, which is what a pilot reads
+ * off a logger or a barogram. Fix times are not: they keep counting past
+ * midnight so a flight that crosses it stays one continuous sequence. So the
+ * time asked for is tried against every day the trace spans, and the nearest
+ * fix on any of them wins - otherwise 00:20 on a flight that took off at 23:44
+ * would land on the first fix of the trace rather than the one it names.
+ */
+function nearestFix(F: Fix[], want: number): { index: number; gap_s: number } {
+  const wall = pyMod(want, 86400);
+  let index = 0;
+  let gap_s = Infinity;
+  for (let day = Math.floor(F[0].t / 86400); day <= Math.floor(F[F.length - 1].t / 86400); day++) {
+    const t = wall + day * 86400;
+    for (let i = 0; i < F.length; i++) {
+      const gap = Math.abs(F[i].t - t);
+      if (gap < gap_s) {
+        gap_s = gap;
+        index = i;
+      }
+    }
+  }
+  return { index, gap_s };
+}
+
+/** Seconds since midnight UTC as `HH:MM:SS`, for the launch note. */
+function hhmmss(t: number): string {
+  const s = Math.floor(t) % 86400;
+  return (
+    `${String(Math.floor(s / 3600)).padStart(2, '0')}:` +
+    `${String(Math.floor(s / 60) % 60).padStart(2, '0')}:` +
+    `${String(s % 60).padStart(2, '0')}`
+  );
+}
+
+/** Index of the first fix at or after a time. The fixes are sorted. */
+function indexAtTime(F: Fix[], t: number): number {
+  let lo = 0;
+  let hi = F.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (F[mid].t < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }

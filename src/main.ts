@@ -9,7 +9,7 @@
 
 import './style.css';
 import { analyse } from './core/index.ts';
-import type { Analysis, PolarDb } from './core/index.ts';
+import type { Analysis, ObservationZone, PolarDb } from './core/index.ts';
 import polarsDb from './data/polars.json' with { type: 'json' };
 import { clear, h } from './ui/dom.ts';
 import { dropzone } from './ui/dropzone.ts';
@@ -38,8 +38,23 @@ const state: {
   text: string;
   colourBy: TraceColouring;
   polarForce: string | undefined;
+  /** Operator's release time, seconds since midnight UTC, or unset. */
+  releaseTime: number | undefined;
+  /** Operator's wing loading, kg/m², or unset for the published one. */
+  loading: number | undefined;
+  /** Observation zone the trace is checked against the declaration with. */
+  taskZone: ObservationZone;
   selection: Span | null;
-} = { name: '', text: '', colourBy: 'phase', polarForce: undefined, selection: null };
+} = {
+  name: '',
+  text: '',
+  colourBy: 'phase',
+  polarForce: undefined,
+  releaseTime: undefined,
+  loading: undefined,
+  taskZone: 'cylinder',
+  selection: null,
+};
 
 app.append(
   h(
@@ -84,6 +99,11 @@ function load(name: string, text: string): void {
   state.text = text;
   state.selection = null;
   state.polarForce = undefined;
+  // Every override belongs to the flight it was entered against, so a new file
+  // starts from what the file itself says.
+  state.releaseTime = undefined;
+  state.loading = undefined;
+  state.taskZone = 'cylinder';
   render();
 }
 
@@ -92,7 +112,12 @@ function render(): void {
   try {
     a = analyse(state.text, {
       polarDb: DB,
-      polar: state.polarForce ? { force: state.polarForce } : {},
+      polar: {
+        ...(state.polarForce ? { force: state.polarForce } : {}),
+        ...(state.loading === undefined ? {} : { loadingKgM2: state.loading }),
+      },
+      releaseTime: state.releaseTime,
+      taskZone: { kind: state.taskZone },
     });
   } catch (e) {
     showError(
@@ -128,17 +153,47 @@ function render(): void {
           `${hms(a.result.trace.start)} to ${hms(a.result.trace.end)} UTC`,
       ),
     ),
-    controls(DB, { colourBy: state.colourBy, polarForce: state.polarForce }, {
-      onUnits: () => render(),
-      onColourBy: (c) => {
-        state.colourBy = c;
-        render();
+    controls(
+      DB,
+      {
+        colourBy: state.colourBy,
+        polarForce: state.polarForce,
+        releaseTime: state.releaseTime,
+        release: { time: a.result.launch.release, confident: a.result.launch.release_confident },
+        loading: state.loading,
+        referenceLoading: a.result.polar.reference_loading_kg_m2,
+        taskZone: state.taskZone,
+        hasTask: a.result.task_flight !== null,
       },
-      onPolar: (p) => {
-        state.polarForce = p;
-        render();
+      {
+        onUnits: () => render(),
+        onColourBy: (c) => {
+          state.colourBy = c;
+          render();
+        },
+        onPolar: (p) => {
+          state.polarForce = p;
+          render();
+        },
+        // A number or time input fires `change` again when it loses focus,
+        // and re-rendering tears down the input that is losing it. Re-render
+        // only when the value actually moved.
+        onRelease: (t) => {
+          if (t === state.releaseTime) return;
+          state.releaseTime = t;
+          render();
+        },
+        onLoading: (kg) => {
+          if (kg === state.loading) return;
+          state.loading = kg;
+          render();
+        },
+        onTaskZone: (z) => {
+          state.taskZone = z;
+          render();
+        },
       },
-    }),
+    ),
     qualityPanel(a),
     summaryPanel(a),
     taskPanel(a),
@@ -204,11 +259,14 @@ function renderTables(
   }
 
   const onSelect = (s: Span | null) => link.setSelection(s);
+  // `selected` is what lets a row say it is the one currently scrubbed to, and
+  // lets choosing it again clear rather than re-select.
+  const handlers = { onSelect, selected: span };
   host.append(
-    climbTable(filtered, { onSelect }),
+    climbTable(filtered, handlers),
     perCirclePanel(filtered) ?? h('div', { class: 'nothing' }),
     windPanel(filtered) ?? h('div', { class: 'nothing' }),
-    legTable(filtered, { onSelect }),
+    legTable(filtered, handlers),
   );
 }
 

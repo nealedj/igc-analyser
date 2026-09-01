@@ -213,6 +213,19 @@ body {
 .seg button:hover { color: var(--fg); }
 .seg button.on { background: var(--accent); color: #fff; }
 
+.release-input {
+  font: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem;
+  border: 1px solid var(--rule-strong); border-radius: var(--radius);
+  background: var(--bg-panel); color: var(--fg); font-variant-numeric: tabular-nums;
+}
+.loading-input {
+  font: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem; width: 5rem;
+  border: 1px solid var(--rule-strong); border-radius: var(--radius);
+  background: var(--bg-panel); color: var(--fg); font-variant-numeric: tabular-nums;
+}
+.control-hint { font-size: 0.8rem; color: var(--fg-faint); font-variant-numeric: tabular-nums; }
+.release-estimated { color: var(--warn); }
+
 .polar-select {
   font: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem;
   border: 1px solid var(--rule-strong); border-radius: var(--radius);
@@ -257,14 +270,28 @@ table.data thead th {
 table.data tbody tr { border-bottom: 1px solid var(--rule); }
 table.data tbody td { font-variant-numeric: tabular-nums; }
 table.data tr.clickable { cursor: pointer; }
-table.data tr.clickable:hover, table.data tr.clickable:focus-visible { background: var(--accent-soft); }
+table.data tr.clickable:hover,
+table.data tr.clickable:focus-within,
+table.data tr.chosen { background: var(--accent-soft); }
 table.data tr.muted td { color: var(--fg-faint); }
+
+/* The focusable, announced part of a clickable row: see selectableRow in
+   tables.ts for why it is a button in the first cell rather than the row. It
+   inherits everything, so the row still reads as a row of figures. */
+.row-go {
+  font: inherit; color: inherit; background: none; border: 0; padding: 0;
+  cursor: pointer; font-variant-numeric: inherit; text-align: inherit;
+}
+.row-go[aria-pressed='true'] { font-weight: 600; }
 table.compact { font-size: 0.83rem; }
 
 .caveat {
   margin: 0 0 0.75rem; font-size: 0.86rem; color: var(--fg-dim);
   max-width: var(--measure); border-left: 2px solid var(--rule-strong); padding-left: 0.7rem;
 }
+.task-flown { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+.task-flown h3 { font-size: 0.9rem; margin: 0 0 0.5rem; color: var(--fg-dim); font-weight: 600; }
+
 .circle-block { margin-top: 1rem; }
 .circle-block h3 { font-size: 0.86rem; margin: 0 0 0.35rem; color: var(--fg-dim); font-weight: 600; }
 .nothing { display: none; }
