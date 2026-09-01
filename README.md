@@ -6,7 +6,7 @@ doing on the straight legs.
 
 **[nealedj.github.io/igc-analyser](https://nealedj.github.io/igc-analyser/)**
 
-![The analyser: the data-quality panel, the flight summary, the declared task, and the barogram with circling picked out](docs/screenshot.png)
+![The analyser: what the trace can and cannot show, the flight summary, and the declared 300 km triangle with the trace checked against it - start, both turnpoints, finish and the speed](docs/screenshot.png)
 
 Everything runs client-side. The file is read with the File API and analysed in
 the tab; there is no backend, no upload and no analytics. Once the page has
