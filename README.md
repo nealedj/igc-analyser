@@ -85,7 +85,15 @@ the test oracle — nothing imports it at runtime and none of it is shipped.
 npm test               # unit tests, export format, golden fixtures vs the oracle
 npm run verify-fixtures # regenerate from the oracle and diff (needs python3)
 npm run check-core     # core stays DOM-free and dependency-free
+npm run lint           # oxlint
 ```
+
+`npm run lint` is [oxlint](https://oxc.rs/docs/guide/usage/linter.html), one
+dev dependency and no formatter. The formatting here is consistent and was
+maintained by hand, and a formatter would reflow it to no benefit; the linter's
+job is to catch defects and to hold the conventions the code already follows.
+Rules turned off in [`.oxlintrc.json`](.oxlintrc.json) say why, at the config
+rather than line by line at the site.
 
 Where the port differs from the oracle on purpose, the golden tests are handed
 the oracle's own inputs — its polar database, its leg segmentation — so the

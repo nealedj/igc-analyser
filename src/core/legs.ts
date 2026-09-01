@@ -11,7 +11,8 @@
  */
 
 import type { Fix } from './types.ts';
-import { Polar, sigma } from './polar.ts';
+import { sigma } from './polar.ts';
+import type { Polar } from './polar.ts';
 import { mean, pstdev } from './pyutil.ts';
 
 /**

@@ -202,7 +202,7 @@ function exactDecimal(x: number): string {
 function roundDecimalHalfEven(s: string, ndigits: number): string {
   const neg = s.startsWith('-');
   if (neg) s = s.slice(1);
-  let [int, frac = ''] = s.split('.');
+  const [int, frac = ''] = s.split('.');
   if (frac.length <= ndigits) return (neg ? '-' : '') + (frac ? `${int}.${frac}` : int);
 
   const keep = frac.slice(0, ndigits);
@@ -215,7 +215,7 @@ function roundDecimalHalfEven(s: string, ndigits: number): string {
   if (first > '5' || (first === '5' && restNonZero)) n += 1n;
   else if (first === '5' && !restNonZero && n % 2n === 1n) n += 1n;
 
-  let out = String(n).padStart(ndigits + 1, '0');
+  const out = String(n).padStart(ndigits + 1, '0');
   const body =
     ndigits > 0
       ? `${out.slice(0, out.length - ndigits)}.${out.slice(out.length - ndigits)}`
