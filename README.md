@@ -38,11 +38,13 @@ loaded it works with the network off.
   than in a footnote. A coarse trace cannot show centring inside a circle, and
   every airmass figure is only as good as the assumed polar.
 
-Two things the file usually gets wrong can be overridden on the page: the
-**polar**, when the glider-type header is missing or names the wrong glider,
-and the **release time**, when the tow ran through lift and the heuristic put
-it in the wrong place. Everything after release is measured from the release,
-so the second matters as much as the first.
+Three things the file cannot tell you can be set on the page. The **polar**,
+when the glider-type header is missing or names the wrong glider. The **release
+time**, when the tow ran through lift and the heuristic put it in the wrong
+place — everything after release is measured from it. And the **wing loading**,
+because the polars are dry at club loading and no IGC file records what the
+glider weighed: water or a heavy pilot moves every airmass figure further than
+the choice between two plausible polars does.
 
 ## Running it locally
 

@@ -23,6 +23,10 @@ import { ImportError, fetchTrace, parseTarget } from './import.ts';
 export interface ControlState {
   colourBy: TraceColouring;
   polarForce: string | undefined;
+  /** Operator's wing loading, kg/m², or unset for the published one. */
+  loading: number | undefined;
+  /** The loading the chosen polar is published at, for the hint next to it. */
+  referenceLoading: number | null;
   /** Operator's release time, seconds since midnight UTC, or unset. */
   releaseTime: number | undefined;
   /** The release the analysis is currently using, for the hint next to it. */
@@ -34,6 +38,7 @@ export interface ControlHandlers {
   onColourBy: (c: TraceColouring) => void;
   onPolar: (name: string | undefined) => void;
   onRelease: (seconds: number | undefined) => void;
+  onLoading: (kgM2: number | undefined) => void;
 }
 
 function segmented<T extends string>(
@@ -93,6 +98,53 @@ export function controls(db: PolarDb, state: ControlState, on: ControlHandlers):
     colourToggle,
     releaseControl(state, on.onRelease),
     h('div', { class: 'control' }, h('span', { class: 'control-label' }, 'Polar'), select),
+    loadingControl(state, on.onLoading),
+  );
+}
+
+/**
+ * Wing loading.
+ *
+ * The polars are dry, at club loading, and this is the largest systematic
+ * error left in the airmass figures: water or a heavy pilot moves them further
+ * than the choice between two plausible polars does. A ballasted LS4 at
+ * 45 kg/m² against its published 34 flies every point of the curve 15% faster
+ * for 15% more sink, which the analysis reads as air that was not there.
+ *
+ * Empty means the published loading, and the hint says what that is, so the
+ * number to change is on the screen rather than in a data file.
+ */
+function loadingControl(
+  state: ControlState,
+  onLoading: (kgM2: number | undefined) => void,
+): HTMLElement {
+  const input = h('input', {
+    type: 'number',
+    min: '15',
+    max: '70',
+    step: '0.5',
+    class: 'loading-input',
+    'aria-label': 'Wing loading, kilograms per square metre',
+    value: state.loading === undefined ? '' : String(state.loading),
+  }) as HTMLInputElement;
+
+  input.addEventListener('change', () => {
+    const v = Number(input.value);
+    onLoading(input.value.trim() === '' || !Number.isFinite(v) || v <= 0 ? undefined : v);
+  });
+
+  return h(
+    'div',
+    { class: 'control' },
+    h('span', { class: 'control-label' }, 'Wing loading'),
+    input,
+    h(
+      'span',
+      { class: 'control-hint' },
+      state.referenceLoading === null
+        ? 'kg/m² - this polar does not say what loading it is for'
+        : `kg/m² - published at ${state.referenceLoading}`,
+    ),
   );
 }
 
@@ -125,7 +177,7 @@ function releaseControl(
     input,
     h(
       'span',
-      { class: `release-hint${state.release.confident ? '' : ' release-estimated'}` },
+      { class: `control-hint${state.release.confident ? '' : ' release-estimated'}` },
       state.releaseTime === undefined
         ? `${hms(state.release.time)} from the trace${state.release.confident ? '' : ', estimated'}`
         : 'overriding the trace',

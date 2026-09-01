@@ -241,6 +241,13 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
       matched: r.polar.matched,
       bestLd: round(r.polar.best_ld, 1),
       bestLdSpeedMs: round(r.polar.best_ld_speed_ms, 2),
+      minSinkMs: round(r.polar.min_sink_ms),
+      // The loading the published curve is for, and the loading it was scaled
+      // to. `loadingKgM2` null means the curve was used as published; it is
+      // the single largest assumption behind every airmass figure here, so it
+      // travels with them rather than being inferred from `note`.
+      referenceLoadingKgM2: round(r.polar.reference_loading_kg_m2, 1),
+      loadingKgM2: round(r.polar.loading_kg_m2, 1),
     },
     quality: {
       fixes: q.fixes,

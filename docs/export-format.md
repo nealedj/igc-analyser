@@ -242,13 +242,24 @@ dolphin flying or inattention, and `fracRisingAir` says which.
 | `matched` | boolean | **`false` means no glider was recognised and a generic was assumed.** |
 | `bestLd` | number \| null | |
 | `bestLdSpeedMs` | number \| null | |
+| `minSinkMs` | number \| null | Where the fitted curve puts minimum sink. |
+| `referenceLoadingKgM2` | number \| null | The wing loading the published curve is for. `null` for a custom or disabled polar. |
+| `loadingKgM2` | number \| null | The loading the curve was scaled to. `null` means it was used as published. |
 
 > **`meanAirmassMs`, `fracRisingAir`, `risingAirFraction` and `ldOverGround`
 > must never be published without `polar.note` alongside them.**
 
-The polars are indicative values at typical club loading, not
-manufacturer-certified figures. A glider flying wet, heavy or buggy reads low,
-and `matched: false` means the number rests on a guess at what was flying.
+The polars are indicative values at the stated wing loading, dry, not
+manufacturer-certified figures. `matched: false` means the number rests on a
+guess at what was flying.
+
+Wing loading is the largest assumption left in any airmass figure, which is why
+it is two fields rather than a sentence in `note`. Water or a heavy pilot moves
+the curve further than the choice between two plausible polars does: a glider at
+45 kg/m² against a published 34 flies every point of its polar 15% faster for
+15% more sink. `loadingKgM2: null` means nobody said, so the published loading
+was used — a page quoting airmass from a flight that might have been ballasted
+should say as much.
 
 ### `quality`
 

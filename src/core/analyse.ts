@@ -111,6 +111,11 @@ export interface Result {
     matched: boolean;
     best_ld: number | null;
     best_ld_speed_ms: number | null;
+    min_sink_ms: number | null;
+    /** Wing loading the published curve is for, kg/m²; null where unknown. */
+    reference_loading_kg_m2: number | null;
+    /** Loading it was scaled to, kg/m²; null when it was left as published. */
+    loading_kg_m2: number | null;
   };
   /** Fraction of straight flight spent in rising air, circuit legs excluded. */
   rising_air_fraction: number | null;
@@ -206,6 +211,7 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   // ------------------------------------------------------------ cruise legs
   const match = loadPolar((opts.polarDb ?? (polarsDb as PolarDb)), header.glider_type, opts.polar ?? {});
   const bestLd = match.polar ? match.polar.bestLd() : null;
+  const minSink = match.polar ? match.polar.minSink() : null;
 
   const legRuns = rs.filter((r) => !r.circ && F[r.a].t >= relT && F[r.b].t - F[r.a].t >= 60);
 
@@ -295,6 +301,9 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
       matched: match.matched,
       best_ld: bestLd ? bestLd.ld : null,
       best_ld_speed_ms: bestLd ? bestLd.speed : null,
+      min_sink_ms: minSink ? minSink.sink : null,
+      reference_loading_kg_m2: match.referenceLoading,
+      loading_kg_m2: match.loading,
     },
     rising_air_fraction: totT ? upT / totT : null,
     profile: F.map((f) => ({

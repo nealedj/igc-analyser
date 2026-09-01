@@ -40,6 +40,8 @@ const state: {
   polarForce: string | undefined;
   /** Operator's release time, seconds since midnight UTC, or unset. */
   releaseTime: number | undefined;
+  /** Operator's wing loading, kg/m², or unset for the published one. */
+  loading: number | undefined;
   selection: Span | null;
 } = {
   name: '',
@@ -47,6 +49,7 @@ const state: {
   colourBy: 'phase',
   polarForce: undefined,
   releaseTime: undefined,
+  loading: undefined,
   selection: null,
 };
 
@@ -96,6 +99,7 @@ function load(name: string, text: string): void {
   // Every override belongs to the flight it was entered against, so a new file
   // starts from what the file itself says.
   state.releaseTime = undefined;
+  state.loading = undefined;
   render();
 }
 
@@ -104,7 +108,10 @@ function render(): void {
   try {
     a = analyse(state.text, {
       polarDb: DB,
-      polar: state.polarForce ? { force: state.polarForce } : {},
+      polar: {
+        ...(state.polarForce ? { force: state.polarForce } : {}),
+        ...(state.loading === undefined ? {} : { loadingKgM2: state.loading }),
+      },
       releaseTime: state.releaseTime,
     });
   } catch (e) {
@@ -148,6 +155,8 @@ function render(): void {
         polarForce: state.polarForce,
         releaseTime: state.releaseTime,
         release: { time: a.result.launch.release, confident: a.result.launch.release_confident },
+        loading: state.loading,
+        referenceLoading: a.result.polar.reference_loading_kg_m2,
       },
       {
         onUnits: () => render(),
@@ -159,8 +168,17 @@ function render(): void {
           state.polarForce = p;
           render();
         },
+        // A number or time input fires `change` again when it loses focus,
+        // and re-rendering tears down the input that is losing it. Re-render
+        // only when the value actually moved.
         onRelease: (t) => {
+          if (t === state.releaseTime) return;
           state.releaseTime = t;
+          render();
+        },
+        onLoading: (kg) => {
+          if (kg === state.loading) return;
+          state.loading = kg;
           render();
         },
       },

@@ -274,6 +274,9 @@ export function legTable(a: Analysis, on: TableHandlers = {}): HTMLElement {
         `subtracting polar sink. It assumes ${polar.name ?? 'no polar'}` +
         (polar.matched ? '' : ', which is a guess') +
         (polar.best_ld !== null ? ` at ${fmt(polar.best_ld, 0)}:1` : '') +
+        (polar.loading_kg_m2 === null
+          ? ''
+          : ` scaled to ${fmt(polar.loading_kg_m2, 1)} kg/m²`) +
         `, and the flight-mean wind. Crosswind legs are worst affected. ` +
         `L/D over the ground is not wind-corrected.`,
     ),

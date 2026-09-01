@@ -74,8 +74,16 @@ export function qualityPanel(a: Analysis): HTMLElement {
         (r.polar.best_ld !== null
           ? `That assumes best glide near ${fmt(r.polar.best_ld, 0)}:1. `
           : '') +
-        `Every airmass and L/D figure below depends on it: a glider flying wet, ` +
-        `heavy or buggy will read low.`,
+        `Every airmass and L/D figure below depends on it.` +
+        (r.polar.loading_kg_m2 === null
+          ? ` The published curve is dry, at ${
+              r.polar.reference_loading_kg_m2 === null
+                ? 'club loading'
+                : `${fmt(r.polar.reference_loading_kg_m2, 1)} kg/m²`
+            }; water or a heavy pilot moves it further than the choice of polar does, ` +
+            `so set the wing loading above if you know it.`
+          : ` It is scaled to the wing loading set above, which is the flown ` +
+            `loading rather than the published one.`),
     ),
   );
 

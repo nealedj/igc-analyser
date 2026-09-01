@@ -180,14 +180,54 @@ export interface PolarMatch {
   note: string;
   /** Whether the glider was actually recognised, or a generic was assumed. */
   matched: boolean;
+  /** Wing loading the curve was published at, kg/m²; null where unknown. */
+  referenceLoading: number | null;
+  /** Loading the curve was scaled to, kg/m²; null when it was not scaled. */
+  loading: number | null;
 }
 
 export interface LoadPolarOptions {
   /** Force a polar by name or match-key substring, or 'none' to disable. */
   force?: string;
-  /** Custom polar as three (IAS km/h, sink m/s) pairs. */
+  /** Custom polar as three or four (IAS km/h, sink m/s) pairs. */
   custom?: number[][];
+  /**
+   * Wing loading actually flown, kg/m². The polar is scaled from the loading
+   * its published figures are for. Ignored where that reference is unknown,
+   * which is any custom polar: without a reference there is no ratio.
+   */
+  loadingKgM2?: number;
 }
+
+/**
+ * The published figures are dry, at club loading. Water, a heavy pilot or a
+ * light one all move the curve, and by more than the choice between two
+ * plausible polars does: a Duo Discus at 45 kg/m² against its published 37 is
+ * flying 10% faster for 10% more sink everywhere, which is a bigger change to
+ * every airmass figure than picking the wrong single-seater would be.
+ */
+function scaled(
+  name: string,
+  points: number[][],
+  published: PublishedPolar | undefined,
+  wanted: number | undefined,
+): { polar: Polar; note: string; referenceLoading: number | null; loading: number | null } {
+  const reference = published?.loading_kg_m2 ?? null;
+  if (wanted === undefined || reference === null) {
+    return { polar: new Polar(name, points), note: '', referenceLoading: reference, loading: null };
+  }
+  if (!(wanted > 0)) throw new Error('wing loading must be positive');
+  return {
+    polar: new Polar(name, points, wanted / reference),
+    note:
+      `, scaled from ${fmt1(reference)} to ${fmt1(wanted)} kg/m²` +
+      ` (${fmt1((100 * wanted) / reference)}% of the published loading)`,
+    referenceLoading: reference,
+    loading: wanted,
+  };
+}
+
+const fmt1 = (x: number): string => (Math.round(x * 10) / 10).toString();
 
 export function loadPolar(
   db: PolarDb,
@@ -195,20 +235,43 @@ export function loadPolar(
   opts: LoadPolarOptions = {},
 ): PolarMatch {
   if (opts.custom) {
-    return { polar: new Polar('custom', opts.custom), note: 'custom polar supplied', matched: true };
+    // A custom polar is whatever curve was handed in, at whatever loading it
+    // was measured at. There is no reference to scale from, so there is no
+    // scaling - saying so beats silently applying a ratio to an unknown.
+    return {
+      polar: new Polar('custom', opts.custom),
+      note:
+        'custom polar supplied' +
+        (opts.loadingKgM2 === undefined
+          ? ''
+          : '; the loading override does not apply to it, because a custom curve does ' +
+            'not say what loading it is for'),
+      matched: true,
+      referenceLoading: null,
+      loading: null,
+    };
   }
   const force = opts.force;
   if (force && force.toLowerCase() === 'none') {
-    return { polar: null, note: 'polar disabled - no airmass analysis', matched: false };
+    return {
+      polar: null,
+      note: 'polar disabled - no airmass analysis',
+      matched: false,
+      referenceLoading: null,
+      loading: null,
+    };
   }
   if (force) {
     const f = force.toLowerCase();
     for (const g of db.gliders) {
       if (g.name.toLowerCase().includes(f) || g.match.some((m) => m.includes(f))) {
+        const s = scaled(g.name, g.points, g.published, opts.loadingKgM2);
         return {
-          polar: new Polar(g.name, g.points),
-          note: `polar forced to ${g.name}`,
+          polar: s.polar,
+          note: `polar forced to ${g.name}${s.note}`,
           matched: true,
+          referenceLoading: s.referenceLoading,
+          loading: s.loading,
         };
       }
     }
@@ -230,19 +293,25 @@ export function loadPolar(
     }
   }
   if (best) {
+    const s = scaled(best.glider.name, best.glider.points, best.glider.published, opts.loadingKgM2);
     return {
-      polar: new Polar(best.glider.name, best.glider.points),
-      note: `polar matched to ${best.glider.name} from the glider-type header`,
+      polar: s.polar,
+      note: `polar matched to ${best.glider.name} from the glider-type header${s.note}`,
       matched: true,
+      referenceLoading: s.referenceLoading,
+      loading: s.loading,
     };
   }
   const d = db.default;
+  const s = scaled(d.name, d.points, d.published, opts.loadingKgM2);
   return {
-    polar: new Polar(d.name, d.points),
+    polar: s.polar,
     note:
       `no polar match for ${gliderType === undefined ? 'None' : `'${gliderType}'`}; ` +
-      `using a ${d.name} - treat airmass figures as indicative only`,
+      `using a ${d.name}${s.note} - treat airmass figures as indicative only`,
     matched: false,
+    referenceLoading: s.referenceLoading,
+    loading: s.loading,
   };
 }
 

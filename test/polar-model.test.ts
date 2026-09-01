@@ -96,6 +96,57 @@ test('a loading ratio of one changes nothing at all', () => {
   }
 });
 
+// ------------------------------------------------------ the loading override
+
+test('the loading override scales the matched polar and says it did', () => {
+  const dry = loadPolar(REAL_DB, 'LS4');
+  const wet = loadPolar(REAL_DB, 'LS4', { loadingKgM2: 45 });
+  const ref = dry.referenceLoading!;
+
+  assert.equal(wet.referenceLoading, ref);
+  assert.equal(wet.loading, 45);
+  assert.equal(dry.loading, null, 'no override means the curve is used as published');
+  assert.match(wet.note, /scaled from .* to 45 kg\/m²/);
+
+  // Same glider, so the same best glide ratio, at a higher speed.
+  const k = Math.sqrt(45 / ref);
+  assert.ok(Math.abs(wet.polar!.bestLd().ld - dry.polar!.bestLd().ld) < 0.05);
+  assert.ok(Math.abs(wet.polar!.bestLd().speed! - dry.polar!.bestLd().speed! * k) < 0.2);
+
+  // And it sinks less at a given fast speed, which is the point of ballast.
+  assert.ok(wet.polar!.sink(160 / 3.6) < dry.polar!.sink(160 / 3.6));
+});
+
+test('the loading override survives a forced polar', () => {
+  const m = loadPolar(REAL_DB, 'ASK 21', { force: 'discus', loadingKgM2: 40 });
+  assert.equal(m.polar!.name, 'Discus');
+  assert.equal(m.loading, 40);
+  assert.match(m.note, /polar forced to Discus, scaled from/);
+});
+
+test('a custom polar is not scaled, and says why not', () => {
+  // A custom curve does not carry the loading it was measured at, so there is
+  // no ratio to form. Silently applying one would be worse than not applying it.
+  const m = loadPolar(REAL_DB, 'LS4', {
+    custom: [[80, 0.62], [100, 0.55], [160, 1.6]],
+    loadingKgM2: 45,
+  });
+  assert.equal(m.loading, null);
+  assert.equal(m.referenceLoading, null);
+  assert.match(m.note, /does not say what loading it is for/);
+});
+
+test('a disabled polar stays disabled whatever the loading says', () => {
+  const m = loadPolar(REAL_DB, 'LS4', { force: 'none', loadingKgM2: 45 });
+  assert.equal(m.polar, null);
+  assert.equal(m.loading, null);
+});
+
+test('a nonsensical loading is refused rather than producing a nonsense curve', () => {
+  assert.throws(() => loadPolar(REAL_DB, 'LS4', { loadingKgM2: 0 }));
+  assert.throws(() => loadPolar(REAL_DB, 'LS4', { loadingKgM2: -10 }));
+});
+
 // ---------------------------------------------- the database is the glider
 
 test('real database: every entry declares the published figures it came from', () => {
