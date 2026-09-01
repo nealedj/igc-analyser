@@ -18,6 +18,15 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/**
+ * Empty an element in one step.
+ *
+ * Removing children one at a time is not safe here: taking away a node that
+ * currently has focus fires blur, a blur on a text or number input fires
+ * change, and a change handler re-renders - which empties the same element
+ * again, from inside the loop that is already emptying it. `replaceChildren`
+ * cannot be re-entered halfway through.
+ */
 export const clear = (n: Element): void => {
-  while (n.firstChild) n.removeChild(n.firstChild);
+  n.replaceChildren();
 };

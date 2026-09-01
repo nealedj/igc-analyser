@@ -43,6 +43,16 @@ export interface Fix {
   circ: boolean;
 }
 
+/**
+ * The wind, as a function of height: m/s east and north.
+ *
+ * A single flight-mean vector is a fiction on most days - wind veers and picks
+ * up with height, and a leg flown at 600 m and a leg flown at 1,800 m are in
+ * different air. Everything that subtracts wind takes one of these so that the
+ * question "what was the wind here" is asked at the height it is asked about.
+ */
+export type WindField = (altM: number) => readonly [number, number];
+
 export interface Header {
   date?: string;
   glider_type?: string;

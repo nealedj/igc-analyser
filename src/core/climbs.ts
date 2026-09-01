@@ -9,7 +9,7 @@
  * Port of `circle_stats`, `per_circle` and `best_window`.
  */
 
-import type { Fix } from './types.ts';
+import type { Fix, WindField } from './types.ts';
 import { G, wrap } from './kinematics.ts';
 import { mean, median, radians, degrees } from './pyutil.ts';
 
@@ -47,15 +47,15 @@ export interface PerCircle {
 }
 
 /**
- * Geometry of one circling segment. Pass the flight-mean wind to hold the
- * airspeed honest; leave it out and the segment's own drift is used, which is
- * what makes this usable as a wind estimator.
+ * Geometry of one circling segment. Pass the wind to hold the airspeed honest;
+ * leave it out and the segment's own drift is used, which is what makes this
+ * usable as a wind estimator.
  */
 export function circleStats(
   F: Fix[],
   a: number,
   b: number,
-  wind?: readonly [number, number] | null,
+  wind?: WindField | null,
 ): CircleStats {
   const seg = F.slice(a, b + 1);
   const dur = seg[seg.length - 1].t - seg[0].t;
@@ -72,28 +72,34 @@ export function circleStats(
   for (let i = 0; i < seg.length - 1; i++) if (seg[i].good) T += seg[i].dt;
   if (T === 0) T = 1;
 
-  let wx: number;
-  let wy: number;
-  if (wind === undefined || wind === null) {
-    wx = 0;
-    wy = 0;
-    for (let i = 0; i < seg.length - 1; i++) {
-      if (seg[i].good) {
-        wx += seg[i].vx * seg[i].dt;
-        wy += seg[i].vy * seg[i].dt;
-      }
+  // The segment's own drift. With no wind supplied this is the wind, which is
+  // what makes this usable as the estimator.
+  let dx = 0;
+  let dy = 0;
+  for (let i = 0; i < seg.length - 1; i++) {
+    if (seg[i].good) {
+      dx += seg[i].vx * seg[i].dt;
+      dy += seg[i].vy * seg[i].dt;
     }
-    wx /= T;
-    wy /= T;
-  } else {
-    [wx, wy] = wind;
   }
+  dx /= T;
+  dy /= T;
 
   const air: number[] = [];
   for (let i = 0; i < seg.length - 1; i++) {
-    if (seg[i].good) air.push(Math.hypot(seg[i].vx - wx, seg[i].vy - wy));
+    if (!seg[i].good) continue;
+    // A climb of two thousand feet is not all in the same air, so the wind is
+    // asked for at the height of the fix rather than once for the segment.
+    const [ax, ay] = wind ? wind(seg[i].alt) : [dx, dy];
+    air.push(Math.hypot(seg[i].vx - ax, seg[i].vy - ay));
   }
   const va = air.length ? median(air) : 0;
+
+  // `drift_*` is the wind this segment was measured against, not the drift it
+  // happened to have: with a wind supplied that is the supplied one, taken at
+  // the middle of the climb, and the estimator reads it back out.
+  const mid = (seg[0].alt + seg[seg.length - 1].alt) / 2;
+  const [wx, wy] = wind ? wind(mid) : [dx, dy];
 
   const rate = dur ? Math.abs(turned) / dur : 0;
   const turning = rate > 0.5;

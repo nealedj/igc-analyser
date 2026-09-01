@@ -43,6 +43,43 @@ function iso(date: string | undefined, t: number): string | null {
 const round = (x: number | null | undefined, dp = 3): number | null =>
   x === null || x === undefined || !Number.isFinite(x) ? null : Number(x.toFixed(dp));
 
+/**
+ * The trace checked against the declaration.
+ *
+ * `complete` is the flag a consumer must read before quoting `speedKmh`: the
+ * speed is over the declared distance, so it only means anything when every
+ * point was actually reached, in order. `zone` and `radiusM` are the
+ * assumption the whole block rests on, and travel with it.
+ */
+function flown(a: Analysis): Record<string, unknown> | null {
+  const t = a.result.task_flight;
+  if (!t) return null;
+  return {
+    zone: t.zone,
+    radiusM: t.radius_m,
+    complete: t.complete,
+    note: t.note,
+    // True means no start crossing was found after release and the clock runs
+    // from release itself, so `durationS` is an upper bound and `speedMs` a
+    // lower one. Publish the speed with this or not at all.
+    startAssumed: t.start_assumed,
+    startTime: t.start === null ? null : z(t.start),
+    finishTime: t.finish === null ? null : z(t.finish),
+    durationS: t.duration_s === null ? null : Math.round(t.duration_s),
+    speedMs: round(t.speed_ms, 3),
+    turnpointsRounded: t.turnpoints_rounded,
+    turnpointsDeclared: t.turnpoints_declared,
+    points: t.points.map((p) => ({
+      name: p.name,
+      role: p.role,
+      zone: p.zone,
+      time: p.time === null ? null : z(p.time),
+      closestM: round(p.closest_m, 1),
+      closestAt: z(p.closest_at),
+    })),
+  };
+}
+
 /** A declared point, or null where the file did not carry one. */
 const point = (p: TaskPoint | null): Record<string, unknown> | null =>
   p === null ? null : { name: p.name || null, lat: p.lat, lon: p.lon };
@@ -105,6 +142,10 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
       // detected speed change. Everything after release is measured from it,
       // so a page that quotes soaring time should say when this is an estimate.
       releaseConfident: r.launch.release_confident,
+      // True means a person supplied the release time rather than the trace
+      // yielding it. `releaseConfident` is true in that case too and cannot
+      // tell the two apart, and they are different claims.
+      releaseOverridden: r.launch.release_override,
     },
     task: ts
       ? {
@@ -130,6 +171,9 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
           })),
           takeoff: point(ts.takeoff),
           landing: point(ts.landing),
+          // What the trace did about the declaration, under the observation
+          // zone the page was set to. Not a score: see docs/export-format.md.
+          flown: flown(a),
           declaration: ts.declaration
             ? {
                 description: ts.declaration.description || null,
@@ -152,6 +196,7 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
           legs: [],
           takeoff: null,
           landing: null,
+          flown: null,
           declaration: null,
         },
     phase: {
@@ -174,8 +219,15 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
           // True when the per-climb estimates disagree by more than 8 kt. A
           // page quoting the wind should not quote it without this.
           unreliable: r.wind.unreliable,
+          // How many distinct heights the wind profile rests on. 0 or 1 means
+          // every figure in this file used one flight-mean vector; 2 or more
+          // means the wind was taken at the height each fix was flown at.
+          levels: r.wind_levels,
           perClimb: r.wind.per_climb.map((w) => ({
             time: z(w.time),
+            // The middle of the climb this estimate came from. Two estimates
+            // that disagree at different heights are a gradient, not noise.
+            altM: round(w.alt_m, 1),
             speedMs: round(w.speed_ms),
             fromDeg: round(w.from_deg, 1),
             circles: round(w.circles, 2),
@@ -237,6 +289,13 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
       matched: r.polar.matched,
       bestLd: round(r.polar.best_ld, 1),
       bestLdSpeedMs: round(r.polar.best_ld_speed_ms, 2),
+      minSinkMs: round(r.polar.min_sink_ms),
+      // The loading the published curve is for, and the loading it was scaled
+      // to. `loadingKgM2` null means the curve was used as published; it is
+      // the single largest assumption behind every airmass figure here, so it
+      // travels with them rather than being inferred from `note`.
+      referenceLoadingKgM2: round(r.polar.reference_loading_kg_m2, 1),
+      loadingKgM2: round(r.polar.loading_kg_m2, 1),
     },
     quality: {
       fixes: q.fixes,

@@ -151,7 +151,7 @@ export function parseIgc(text: string): ParsedIgc {
     if (c === 'H') {
       const up = line.toUpperCase();
       if (up.startsWith('HFDTE')) {
-        const d = [...line.slice(5)].filter((ch) => ch >= '0' && ch <= '9').join('').slice(0, 6);
+        const d = line.slice(5).replace(/\D/g, '').slice(0, 6);
         if (d.length === 6) header.date = `20${d.slice(4, 6)}-${d.slice(2, 4)}-${d.slice(0, 2)}`;
       } else if (up.startsWith('HFGTY')) header.glider_type = headerValue(line);
       else if (up.startsWith('HFGID')) header.glider_id = headerValue(line);

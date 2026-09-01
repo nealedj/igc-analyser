@@ -12,7 +12,10 @@ import { analyse } from './core/index.ts';
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith('--'));
 if (!file) {
-  console.error('usage: npm run analyse -- FLIGHT.igc [--min-circle-rate DEG] [--release HH:MM:SS]');
+  console.error(
+    'usage: npm run analyse -- FLIGHT.igc [--min-circle-rate DEG] [--release HH:MM:SS]' +
+      ' [--polar NAME] [--loading KG_PER_M2]',
+  );
   process.exit(2);
 }
 
@@ -27,9 +30,16 @@ const releaseTime = rel
   ? rel.split(':').reduce((acc, p) => acc * 60 + Number(p), 0)
   : undefined;
 
+const polarName = flag('polar');
+const loading = flag('loading');
+
 const { result } = analyse(readFileSync(file, 'utf8'), {
   minCircleRate: rate ? Number(rate) : undefined,
   releaseTime,
+  polar: {
+    ...(polarName ? { force: polarName } : {}),
+    ...(loading ? { loadingKgM2: Number(loading) } : {}),
+  },
 });
 
 process.stdout.write(JSON.stringify(result, null, 1));

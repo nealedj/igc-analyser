@@ -20,9 +20,9 @@ export { segment, runs } from './segment.ts';
 export { findLaunch } from './launch.ts';
 export { circleStats, perCircle, bestWindow } from './climbs.ts';
 export type { CircleStats, PerCircle } from './climbs.ts';
-export { estimateWind } from './wind.ts';
+export { estimateWind, windField, windProfileLevels } from './wind.ts';
 export type { Wind, WindEstimate } from './wind.ts';
-export { Polar, loadPolar, solve3, sigma } from './polar.ts';
+export { Polar, loadPolar, solve3, solveN, sigma } from './polar.ts';
 export type {
   PolarDb,
   PolarEntry,
@@ -33,11 +33,20 @@ export type {
 } from './polar.ts';
 export { analyseLeg, circuitEntry, CIRCUIT_M } from './legs.ts';
 export { summariseTask, scoringPoints, haversine, bearing } from './task.ts';
+export { flyTask, FAI_SECTOR_CYLINDER_M } from './taskflight.ts';
+export type {
+  FlyTaskOptions,
+  ObservationZone,
+  TaskFlight,
+  TaskPointFlown,
+  TaskZoneOptions,
+} from './taskflight.ts';
 export type { TaskLeg, TaskSummary } from './task.ts';
 export type { Leg, LegKind } from './legs.ts';
 export type {
   Fix,
   Header,
+  WindField,
   Launch,
   ParsedIgc,
   Run,

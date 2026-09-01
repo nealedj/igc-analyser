@@ -6,7 +6,7 @@ doing on the straight legs.
 
 **[nealedj.github.io/igc-analyser](https://nealedj.github.io/igc-analyser/)**
 
-![The analyser: the data-quality panel, the flight summary, the declared task, and the barogram with circling picked out](docs/screenshot.png)
+![The analyser: what the trace can and cannot show, the flight summary, and the declared 300 km triangle with the trace checked against it - start, both turnpoints, finish and the speed](docs/screenshot.png)
 
 Everything runs client-side. The file is read with the File API and analysed in
 the tab; there is no backend, no upload and no analytics. Once the page has
@@ -22,21 +22,40 @@ loaded it works with the network off.
   wind-corrected airspeed, plus a circle-by-circle breakdown showing whether
   centring improved, decayed or oscillated.
 - **Wind** — from the drift of whole circles, with the circle count behind each
-  estimate so you can see when it is not evidence.
-- **The declared task** — what the `C` records say the flight was flown
-  against: the shape, the legs with their distances and tracks, and the total.
-  The take-off and landing records are labelled and kept out of it, because
-  counting them turns a 300 km triangle into a five-leg course by way of the
-  launch point. It is the declaration, not a score: no observation zones and no
-  claim, and the page says so.
+  estimate so you can see when it is not evidence, and the height each one
+  belongs to. Where the climbs span enough of the band, every airspeed and
+  airmass figure uses the wind at the height it was flown at rather than one
+  flight-mean vector: a climb at 600 m and a climb at 1,800 m are measuring
+  different air, and averaging them puts the difference into the crosswind
+  legs.
+- **The declared task, and whether it was flown** — what the `C` records say
+  the flight was flown against: the shape, the legs with their distances and
+  tracks, and the total. The take-off and landing records are labelled and kept
+  out of it, because counting them turns a 300 km triangle into a five-leg
+  course by way of the launch point. Then the trace against it: where the start
+  was crossed, when each turnpoint was rounded, the finish, and the speed —
+  "103 km/h round the 300", which is the number a pilot came back for. The
+  observation zone is a choice on the page, a 1 km cylinder or the FAI sector,
+  because the file does not carry one. It is still not a score, and the page
+  says so: no start height or time limits, no airspace, no penalties.
 - **Straight legs** — the airmass energy balance: the vertical motion of the
   air the glider flew through, after subtracting polar sink for the speed and
   density it was flown at. The final glide and the landing circuit are one
   unbroken run in the trace and are reported as two, so a twenty-minute glide
-  home is not filed as a very long landing.
+  home is not filed as a very long landing. Where the task was finished the cut
+  is at the finish rather than at circuit height, which is where the glide was
+  aimed.
 - **What the trace cannot show** — stated above the figures it affects rather
   than in a footnote. A coarse trace cannot show centring inside a circle, and
   every airmass figure is only as good as the assumed polar.
+
+Three things the file cannot tell you can be set on the page. The **polar**,
+when the glider-type header is missing or names the wrong glider. The **release
+time**, when the tow ran through lift and the heuristic put it in the wrong
+place — everything after release is measured from it. And the **wing loading**,
+because the polars are dry at club loading and no IGC file records what the
+glider weighed: water or a heavy pilot moves every airmass figure further than
+the choice between two plausible polars does.
 
 ## Running it locally
 
@@ -85,7 +104,15 @@ the test oracle — nothing imports it at runtime and none of it is shipped.
 npm test               # unit tests, export format, golden fixtures vs the oracle
 npm run verify-fixtures # regenerate from the oracle and diff (needs python3)
 npm run check-core     # core stays DOM-free and dependency-free
+npm run lint           # oxlint
 ```
+
+`npm run lint` is [oxlint](https://oxc.rs/docs/guide/usage/linter.html), one
+dev dependency and no formatter. The formatting here is consistent and was
+maintained by hand, and a formatter would reflow it to no benefit; the linter's
+job is to catch defects and to hold the conventions the code already follows.
+Rules turned off in [`.oxlintrc.json`](.oxlintrc.json) say why, at the config
+rather than line by line at the site.
 
 Where the port differs from the oracle on purpose, the golden tests are handed
 the oracle's own inputs — its polar database, its leg segmentation — so the
@@ -164,8 +191,14 @@ at typical club loading, not manufacturer-certified figures. Treat any figure
 derived from them accordingly — the app says which polar it used and why.
 
 They are generated, not hand-written: `npm run make-polars` derives each
-glider's three points from its published best glide, so the fitted curve
-reproduces the glider on the label rather than something 15% better, and
-`npm test` fails on an entry that has drifted from its own published figures.
-The arithmetic, and what a quadratic can and cannot represent, is documented in
-[`test/tools/make-polars.ts`](test/tools/).
+glider's points from published figures, so the fitted curve reproduces the
+glider on the label rather than something 15% better, and `npm test` fails on an
+entry that has drifted from its own published figures.
+
+Each curve is anchored at two published places, best glide and a point out at
+cruise speed, because best glide alone leaves the curvature to an assumption and
+the curvature is what high-speed sink is made of. Anchored at one, these curves
+read about 13% low above 150 km/h and up to 41% low — on exactly the fast final
+glides where the airmass figure gets used. The arithmetic, what a quadratic can
+and cannot represent, and why a derived cubic is worse rather than better, are
+documented in [`test/tools/make-polars.ts`](test/tools/).
