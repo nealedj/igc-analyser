@@ -1,27 +1,39 @@
 /**
- * The controls bar: units, track colouring, polar override, and import by link.
+ * The controls bar: units, track colouring, the release time, the polar
+ * override, and import by link.
  *
  * The polar override matters more than it looks. Every airmass figure depends
  * on the polar, and the glider-type header is routinely missing, misspelled or
  * describing a different glider from the one that flew.
+ *
+ * The release override is the same kind of thing for time rather than sink.
+ * Release detection is a heuristic and is often wrong when the tow ran through
+ * lift, and everything after release - the phase split, the climbs, the legs,
+ * the soaring time - is measured from it. The pilot knows when they pulled the
+ * bung; this is where they say so.
  */
 
 import type { PolarDb } from '../core/index.ts';
 import { h } from './dom.ts';
 import type { TraceColouring } from './trace.ts';
-import { setUnits, units } from './units.ts';
+import { hms, setUnits, units } from './units.ts';
 import type { UnitSystem } from './units.ts';
 import { ImportError, fetchTrace, parseTarget } from './import.ts';
 
 export interface ControlState {
   colourBy: TraceColouring;
   polarForce: string | undefined;
+  /** Operator's release time, seconds since midnight UTC, or unset. */
+  releaseTime: number | undefined;
+  /** The release the analysis is currently using, for the hint next to it. */
+  release: { time: number; confident: boolean };
 }
 
 export interface ControlHandlers {
   onUnits: (u: UnitSystem) => void;
   onColourBy: (c: TraceColouring) => void;
   onPolar: (name: string | undefined) => void;
+  onRelease: (seconds: number | undefined) => void;
 }
 
 function segmented<T extends string>(
@@ -79,8 +91,55 @@ export function controls(db: PolarDb, state: ControlState, on: ControlHandlers):
     { class: 'controls' },
     unitToggle,
     colourToggle,
+    releaseControl(state, on.onRelease),
     h('div', { class: 'control' }, h('span', { class: 'control-label' }, 'Polar'), select),
   );
+}
+
+/**
+ * The release time.
+ *
+ * Empty means "whatever the trace says", which is the honest default: the tool
+ * should not pretend the pilot has told it something they have not. So the box
+ * starts blank with the detected time beside it, rather than pre-filled with a
+ * guess that would then look like it had been confirmed.
+ */
+function releaseControl(
+  state: ControlState,
+  onRelease: (seconds: number | undefined) => void,
+): HTMLElement {
+  const input = h('input', {
+    type: 'time',
+    step: '1',
+    class: 'release-input',
+    'aria-label': 'Release time, UTC',
+    value: state.releaseTime === undefined ? '' : hms(state.releaseTime),
+  }) as HTMLInputElement;
+
+  input.addEventListener('change', () => onRelease(secondsOf(input.value)));
+
+  return h(
+    'div',
+    { class: 'control' },
+    h('span', { class: 'control-label' }, 'Release'),
+    input,
+    h(
+      'span',
+      { class: `release-hint${state.release.confident ? '' : ' release-estimated'}` },
+      state.releaseTime === undefined
+        ? `${hms(state.release.time)} from the trace${state.release.confident ? '' : ', estimated'}`
+        : 'overriding the trace',
+    ),
+  );
+}
+
+/** `HH:MM` or `HH:MM:SS` to seconds since midnight; empty or unreadable is unset. */
+function secondsOf(value: string): number | undefined {
+  const m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value.trim());
+  if (!m) return undefined;
+  const [hh, mm, ss] = [Number(m[1]), Number(m[2]), Number(m[3] ?? 0)];
+  if (hh > 23 || mm > 59 || ss > 59) return undefined;
+  return hh * 3600 + mm * 60 + ss;
 }
 
 /**

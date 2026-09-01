@@ -213,6 +213,14 @@ body {
 .seg button:hover { color: var(--fg); }
 .seg button.on { background: var(--accent); color: #fff; }
 
+.release-input {
+  font: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem;
+  border: 1px solid var(--rule-strong); border-radius: var(--radius);
+  background: var(--bg-panel); color: var(--fg); font-variant-numeric: tabular-nums;
+}
+.release-hint { font-size: 0.8rem; color: var(--fg-faint); font-variant-numeric: tabular-nums; }
+.release-estimated { color: var(--warn); }
+
 .polar-select {
   font: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem;
   border: 1px solid var(--rule-strong); border-radius: var(--radius);

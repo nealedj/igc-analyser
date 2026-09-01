@@ -38,8 +38,17 @@ const state: {
   text: string;
   colourBy: TraceColouring;
   polarForce: string | undefined;
+  /** Operator's release time, seconds since midnight UTC, or unset. */
+  releaseTime: number | undefined;
   selection: Span | null;
-} = { name: '', text: '', colourBy: 'phase', polarForce: undefined, selection: null };
+} = {
+  name: '',
+  text: '',
+  colourBy: 'phase',
+  polarForce: undefined,
+  releaseTime: undefined,
+  selection: null,
+};
 
 app.append(
   h(
@@ -84,6 +93,9 @@ function load(name: string, text: string): void {
   state.text = text;
   state.selection = null;
   state.polarForce = undefined;
+  // Every override belongs to the flight it was entered against, so a new file
+  // starts from what the file itself says.
+  state.releaseTime = undefined;
   render();
 }
 
@@ -93,6 +105,7 @@ function render(): void {
     a = analyse(state.text, {
       polarDb: DB,
       polar: state.polarForce ? { force: state.polarForce } : {},
+      releaseTime: state.releaseTime,
     });
   } catch (e) {
     showError(
@@ -128,17 +141,30 @@ function render(): void {
           `${hms(a.result.trace.start)} to ${hms(a.result.trace.end)} UTC`,
       ),
     ),
-    controls(DB, { colourBy: state.colourBy, polarForce: state.polarForce }, {
-      onUnits: () => render(),
-      onColourBy: (c) => {
-        state.colourBy = c;
-        render();
+    controls(
+      DB,
+      {
+        colourBy: state.colourBy,
+        polarForce: state.polarForce,
+        releaseTime: state.releaseTime,
+        release: { time: a.result.launch.release, confident: a.result.launch.release_confident },
       },
-      onPolar: (p) => {
-        state.polarForce = p;
-        render();
+      {
+        onUnits: () => render(),
+        onColourBy: (c) => {
+          state.colourBy = c;
+          render();
+        },
+        onPolar: (p) => {
+          state.polarForce = p;
+          render();
+        },
+        onRelease: (t) => {
+          state.releaseTime = t;
+          render();
+        },
       },
-    }),
+    ),
     qualityPanel(a),
     summaryPanel(a),
     taskPanel(a),

@@ -79,14 +79,26 @@ export function qualityPanel(a: Analysis): HTMLElement {
     ),
   );
 
-  if (!r.launch.release_confident && !r.launch.type.startsWith('no launch')) {
+  if (r.launch.release_override) {
+    items.push(
+      h(
+        'li',
+        { class: 'note' },
+        `The release time is set to ${hms(r.launch.release)} by hand, not read from ` +
+          `the trace. Everything below is measured from it. Clear the Release box ` +
+          `above to go back to what the trace says.`,
+      ),
+    );
+  } else if (!r.launch.release_confident && !r.launch.type.startsWith('no launch')) {
     items.push(
       h(
         'li',
         { class: 'warn' },
         `The release time is an estimate: no clean drop below tow speed was found, ` +
           `so the top of the initial climb is used. It is often wrong when the tow ` +
-          `ran through lift. Everything below is measured from it.`,
+          `ran through lift. Everything below is measured from it. If you know when ` +
+          `you released, put it in the Release box above and the whole debrief is ` +
+          `recomputed from that.`,
       ),
     );
   }
@@ -132,7 +144,8 @@ export function summaryPanel(a: Analysis): HTMLElement {
   rows.push(['Launch', `${hms(r.launch.takeoff)} - ${r.launch.type}`]);
   rows.push([
     'Release',
-    `${hms(r.launch.release)}${r.launch.release_confident ? '' : ' (estimated)'}`,
+    `${hms(r.launch.release)}` +
+      (r.launch.release_override ? ' (set by hand)' : r.launch.release_confident ? '' : ' (estimated)'),
   ]);
   rows.push(['Max height', height(r.trace.max_alt_m)]);
   rows.push(['Track distance', distance(r.track_distance_m)]);

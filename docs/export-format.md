@@ -94,12 +94,19 @@ inflates short-window climb rates. Neither channel is a datum for airspace.
 | `type` | string | `"aerotow"`, `"winch or bungee launch"`, `"unclear - possibly a self-launch or a partial trace"`, or `"no launch in this file - the trace appears to start airborne"`. Match on the prefix, not the whole string. |
 | `note` | string | Human-readable: initial climb, duration, mean ground speed. |
 | `releaseConfident` | boolean | **See below.** |
+| `releaseOverridden` | boolean | **See below.** |
 
 `releaseConfident: false` means no clean drop below tow speed was found and the
 top of the initial climb was used instead. It is often wrong when the tow ran
 through lift. Every figure in `phase` is measured from the release, so **a page
 that quotes soaring time or the phase split when this is `false` should say the
 release is an estimate.**
+
+`releaseOverridden: true` means the release time was supplied by whoever made
+the bundle rather than found in the trace. `releaseConfident` is `true` in that
+case as well and cannot tell the two apart, which is why this is separate: a
+time a pilot asserted and a time the trace yielded are different claims about
+where the flight starts, even though both are better than a guess.
 
 ### `task`
 

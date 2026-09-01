@@ -105,6 +105,10 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
       // detected speed change. Everything after release is measured from it,
       // so a page that quotes soaring time should say when this is an estimate.
       releaseConfident: r.launch.release_confident,
+      // True means a person supplied the release time rather than the trace
+      // yielding it. `releaseConfident` is true in that case too and cannot
+      // tell the two apart, and they are different claims.
+      releaseOverridden: r.launch.release_override,
     },
     task: ts
       ? {

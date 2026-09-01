@@ -22,7 +22,7 @@ import type { LoadPolarOptions, PolarDb } from './polar.ts';
 import polarsDb from '../data/polars.json' with { type: 'json' };
 import { summariseTask } from './task.ts';
 import type { TaskSummary } from './task.ts';
-import { median, pyRound } from './pyutil.ts';
+import { median, pyMod, pyRound } from './pyutil.ts';
 
 export interface AnalyseOptions {
   /** Turn-rate threshold for circling, deg/s. */
@@ -79,6 +79,13 @@ export interface Result {
     note: string;
     /** Not in the oracle's JSON: whether the release is a real detection. */
     release_confident: boolean;
+    /**
+     * Not in the oracle's JSON: the release was supplied rather than found.
+     * `release_confident` is true either way, so it cannot tell them apart,
+     * and a figure the operator asserted is a different claim from one the
+     * trace supports.
+     */
+    release_override: boolean;
   };
   track_distance_m: number;
   task: TaskPoint[];
@@ -137,14 +144,15 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   let releaseConfident = launch.confident;
   let note = launch.note;
   if (opts.releaseTime !== undefined) {
-    const want = opts.releaseTime;
-    let bi = 0;
-    for (let i = 1; i < F.length; i++) {
-      if (Math.abs(F[i].t - want) < Math.abs(F[bi].t - want)) bi = i;
-    }
-    release = bi;
+    const found = nearestFix(F, opts.releaseTime);
+    release = found.index;
     releaseConfident = true;
-    note += '  [release time supplied by the operator]';
+    note +=
+      `  [release taken as ${hhmmss(F[release].t)}, supplied by the operator` +
+      // Asking for a time the trace does not cover snaps to its nearest end,
+      // which is a silently different answer from the one that was asked for.
+      (found.gap_s > 30 ? `; the nearest fix is ${Math.round(found.gap_s)} s away` : '') +
+      ']';
   }
 
   let dist = 0;
@@ -264,6 +272,7 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
       type: launch.type,
       note,
       release_confident: releaseConfident,
+      release_override: opts.releaseTime !== undefined,
     },
     track_distance_m: dist,
     task,
@@ -315,4 +324,41 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   };
 
   return { result, fixes: F, runs: rs };
+}
+
+/**
+ * The fix nearest a time of day, and how far off it is.
+ *
+ * A release time is seconds since midnight UTC, which is what a pilot reads
+ * off a logger or a barogram. Fix times are not: they keep counting past
+ * midnight so a flight that crosses it stays one continuous sequence. So the
+ * time asked for is tried against every day the trace spans, and the nearest
+ * fix on any of them wins - otherwise 00:20 on a flight that took off at 23:44
+ * would land on the first fix of the trace rather than the one it names.
+ */
+function nearestFix(F: Fix[], want: number): { index: number; gap_s: number } {
+  const wall = pyMod(want, 86400);
+  let index = 0;
+  let gap_s = Infinity;
+  for (let day = Math.floor(F[0].t / 86400); day <= Math.floor(F[F.length - 1].t / 86400); day++) {
+    const t = wall + day * 86400;
+    for (let i = 0; i < F.length; i++) {
+      const gap = Math.abs(F[i].t - t);
+      if (gap < gap_s) {
+        gap_s = gap;
+        index = i;
+      }
+    }
+  }
+  return { index, gap_s };
+}
+
+/** Seconds since midnight UTC as `HH:MM:SS`, for the launch note. */
+function hhmmss(t: number): string {
+  const s = Math.floor(t) % 86400;
+  return (
+    `${String(Math.floor(s / 3600)).padStart(2, '0')}:` +
+    `${String(Math.floor(s / 60) % 60).padStart(2, '0')}:` +
+    `${String(s % 60).padStart(2, '0')}`
+  );
 }
