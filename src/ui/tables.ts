@@ -277,8 +277,13 @@ export function legTable(a: Analysis, on: TableHandlers = {}): HTMLElement {
         (polar.loading_kg_m2 === null
           ? ''
           : ` scaled to ${fmt(polar.loading_kg_m2, 1)} kg/m²`) +
-        `, and the flight-mean wind. Crosswind legs are worst affected. ` +
-        `L/D over the ground is not wind-corrected.`,
+        (a.result.wind_levels >= 2
+          ? `, and the wind at the height each fix was flown at, interpolated between ` +
+            `${a.result.wind_levels} measured heights. Legs above the highest climb or ` +
+            `below the lowest get the nearest measured wind rather than an extrapolated one.`
+          : `, and the flight-mean wind - there was only one measured height to take it ` +
+            `from, so a crosswind leg well above or below the climbs is worst affected.`) +
+        ` L/D over the ground is not wind-corrected.`,
     ),
     table(
       ['Time', 'Dur', 'Distance', 'Height', 'L/D gnd', 'IAS km/h', 'sd', `Airmass ${climbUnit()}`, 'Rising', ''],
@@ -320,7 +325,13 @@ export function windPanel(a: Analysis): HTMLElement | null {
   const w = a.result.wind;
   if (!w) return null;
   const rows = w.per_climb.map((e) =>
-    row([hms(e.time), windSpeed(e.speed_ms), `${fmt(e.from_deg, 0)}°`, fmt(e.circles, 1)]),
+    row([
+      hms(e.time),
+      height(e.alt_m),
+      windSpeed(e.speed_ms),
+      `${fmt(e.from_deg, 0)}°`,
+      fmt(e.circles, 1),
+    ]),
   );
   return h(
     'section',
@@ -331,9 +342,23 @@ export function windPanel(a: Analysis): HTMLElement | null {
       { class: 'lede' },
       `Mean ${windSpeed(w.speed_ms)} from ${fmt(w.from_deg, 0)}°, weighted by whole circles.` +
         (w.unreliable
-          ? ` The estimates below disagree by ${windSpeed(w.spread_ms)}, which is noise: either too few complete circles or genuinely variable wind.`
+          ? ` The estimates below disagree by ${windSpeed(w.spread_ms)}. Some of that is height - the wind is not the same at the bottom of the band as at the top - and the rest is too few complete circles. Do not lean on the mean.`
           : ''),
     ),
-    table(['Time', 'Speed', 'From', 'Circles'], rows, 'compact'),
+    table(['Time', 'Height', 'Speed', 'From', 'Circles'], rows, 'compact'),
+    h(
+      'p',
+      { class: 'caption' },
+      a.result.wind_levels >= 2
+        ? `Each estimate belongs to the middle of the climb it came from. Airspeeds and ` +
+          `airmass figures elsewhere on this page use the wind at the height each fix was ` +
+          `flown at, interpolated between the ${a.result.wind_levels} heights that had ` +
+          `enough complete circles behind them, and held flat above the highest climb and ` +
+          `below the lowest rather than extrapolated.`
+        : `There is only one measured height here - estimates within 150 m of each other ` +
+          `are one height, and estimates under 2.5 whole circles are not evidence of a ` +
+          `gradient - so the mean above is used everywhere, and a leg well above or below ` +
+          `the climbs gets a wind that was not measured there.`,
+    ),
   );
 }

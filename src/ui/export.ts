@@ -219,8 +219,15 @@ export function buildFlightJson(a: Analysis, opts: ExportOptions = {}): Record<s
           // True when the per-climb estimates disagree by more than 8 kt. A
           // page quoting the wind should not quote it without this.
           unreliable: r.wind.unreliable,
+          // How many distinct heights the wind profile rests on. 0 or 1 means
+          // every figure in this file used one flight-mean vector; 2 or more
+          // means the wind was taken at the height each fix was flown at.
+          levels: r.wind_levels,
           perClimb: r.wind.per_climb.map((w) => ({
             time: z(w.time),
+            // The middle of the climb this estimate came from. Two estimates
+            // that disagree at different heights are a gradient, not noise.
+            altM: round(w.alt_m, 1),
             speedMs: round(w.speed_ms),
             fromDeg: round(w.from_deg, 1),
             circles: round(w.circles, 2),

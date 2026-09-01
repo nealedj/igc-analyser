@@ -22,7 +22,12 @@ loaded it works with the network off.
   wind-corrected airspeed, plus a circle-by-circle breakdown showing whether
   centring improved, decayed or oscillated.
 - **Wind** — from the drift of whole circles, with the circle count behind each
-  estimate so you can see when it is not evidence.
+  estimate so you can see when it is not evidence, and the height each one
+  belongs to. Where the climbs span enough of the band, every airspeed and
+  airmass figure uses the wind at the height it was flown at rather than one
+  flight-mean vector: a climb at 600 m and a climb at 1,800 m are measuring
+  different air, and averaging them puts the difference into the crosswind
+  legs.
 - **The declared task, and whether it was flown** — what the `C` records say
   the flight was flown against: the shape, the legs with their distances and
   tracks, and the total. The take-off and landing records are labelled and kept

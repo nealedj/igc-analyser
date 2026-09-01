@@ -14,8 +14,8 @@ They come in two kinds, and the difference matters:
   the tests know exactly which fields may move, and only those.
 - **Neutralised divergences.** The algorithm is the same but the *inputs* or
   the *segmentation* differ, so `golden.test.ts` hands the port the oracle's
-  version - `analyse(text, { polarDb: ORACLE_POLARS, splitCircuit: false })` -
-  and the comparison stays exact to the last decimal. Writing off `legs` on
+  version - `analyse(text, { polarDb: ORACLE_POLARS, splitCircuit: false,
+  windProfile: false })` - and the comparison stays exact to the last decimal. Writing off `legs` on
   every fixture as expected drift would have cost far more than it bought. The
   shipped behaviour is covered by `test/legs.test.ts` and `test/unit.test.ts`
   instead.
@@ -276,6 +276,65 @@ to run for, and a trace that never lands has no circuit at all.
 
 ---
 
+## Neutralised: the wind is interpolated with height
+
+**Fixtures affected:** every fixture with more than one climb, via `climbs`
+and `legs`
+**Neutralised by:** `analyse(text, { windProfile: false })` in the golden tests
+
+The oracle estimates the wind from circle drift, weights the per-climb
+estimates by whole circles, averages them into one vector, and then subtracts
+that one vector from every fix in the flight:
+
+```python
+W = sum(e["circles"] for e in ests)
+wx = sum(e["vx"] * e["circles"] for e in ests) / W
+wy = sum(e["vy"] * e["circles"] for e in ests) / W
+```
+
+The per-climb estimates are right there and they disagree, which the oracle
+notices - it prints them, and warns when they disagree by more than 8 knots -
+and then averages them anyway. But most of that disagreement is not noise. Wind
+veers and picks up through the working band, so a climb at 600 m and a climb at
+1,800 m are measuring different air and are *supposed* to differ.
+
+Averaging them costs twice. Every leg gets a wind that is too strong for the
+bottom of the band and too weak for the top, and the error does not cancel: on
+a crosswind leg it goes straight into the airspeed, which is why the leg table
+has always carried "crosswind legs are worst affected" as a caveat.
+
+**What the port does instead:** each estimate keeps the height it came from -
+the middle of the climb that produced it - and the wind is interpolated between
+them, linearly and as components rather than as a bearing. Everything that
+subtracts wind asks for it at the height of the fix it is working on: the leg
+airspeeds, the leg airmass balance, and the wind-corrected airspeed behind
+circle radius and bank.
+
+Three guards, because a gradient invented out of noise would be worse than the
+average it replaced:
+
+- Estimates with fewer than 2.5 whole circles are left out. The flight-mean
+  vector dilutes a thin estimate by weighting on circles; a profile would run
+  through it at full strength.
+- Estimates within 150 m of each other in height are merged, weighted by
+  circles. Two climbs in the same part of the band are two samples of one wind,
+  and left apart a small disagreement between them becomes a near-vertical step
+  in the profile.
+- Outside the range of heights that were measured, the wind is held flat rather
+  than extrapolated. That covers the tow, the final glide and the circuit -
+  the parts of the flight there is no evidence about.
+
+Where fewer than two heights survive those guards there is nothing to
+interpolate, and the flight-mean vector is used exactly as before.
+`result.wind_levels` says how many heights the profile rests on, so the page
+can say whether it is doing anything at all, and `flight.json` carries it.
+
+`wind` itself is unchanged: the reported flight-mean vector, its direction and
+the `unreliable` flag are all still the oracle's, which is why only `climbs`
+and `legs` move.
+
+---
+
 ## What is *not* divergent
 
 Faithfully reproduced, including where it is arguably arguable:
@@ -289,7 +348,9 @@ Faithfully reproduced, including where it is arguably arguable:
   the four-pass absorption, including the fact that each pass iterates over a
   snapshot of the run list rather than a live one.
 - **Wind from circle drift**, weighted by whole circles, including the 1.5
-  circle minimum.
+  circle minimum, and the reported flight-mean vector that comes out of it.
+  Only where that vector gets *applied* does the port differ - see
+  *Neutralised: the wind is interpolated with height*.
 - **`statistics.median` on the wind-corrected airspeeds** rather than a mean.
 - **Polar matching by substring** against the glider-type header, and the
   fallback to a generic 38:1 glass single-seater.

@@ -13,7 +13,7 @@ import { segment } from './segment.ts';
 import { findLaunch } from './launch.ts';
 import { bestWindow, circleStats, perCircle } from './climbs.ts';
 import type { CircleStats, PerCircle } from './climbs.ts';
-import { estimateWind } from './wind.ts';
+import { estimateWind, windField, windProfileLevels } from './wind.ts';
 import type { Wind } from './wind.ts';
 import { analyseLeg, circuitEntry } from './legs.ts';
 import type { Leg } from './legs.ts';
@@ -44,6 +44,12 @@ export interface AnalyseOptions {
   splitCircuit?: boolean;
   /** Observation zone to check the trace against the declaration with. */
   taskZone?: TaskZoneOptions;
+  /**
+   * Interpolate the wind between the per-climb estimates by height rather than
+   * using one flight-mean vector everywhere. Default true. The oracle has no
+   * equivalent; `false` reproduces its airspeeds. See test/DIVERGENCE.md.
+   */
+  windProfile?: boolean;
 }
 
 export interface ProfilePoint {
@@ -109,6 +115,13 @@ export interface Result {
     working_band: { bottom_m: number; top_m: number } | null;
   };
   wind: Wind | null;
+  /**
+   * Distinct heights the wind profile rests on. Not in the oracle's JSON.
+   * 0 or 1 means every figure used one flight-mean vector, because there was
+   * not enough to interpolate between; 2 or more means the wind was taken at
+   * the height each fix was flown at.
+   */
+  wind_levels: number;
   climbs: Climb[];
   legs: Leg[];
   /** Which polar was used and on what evidence. Not in the oracle's JSON. */
@@ -195,10 +208,11 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
     (r) => r.circ && F[r.a].t >= relT && F[r.b].alt - F[r.a].alt > 0 && F[r.b].t - F[r.a].t >= 30,
   );
   const wind = estimateWind(F, climbRuns);
-  const windVec = wind ? wind.vector : null;
+  const field = windField(wind, opts.windProfile !== false);
+  const windLevels = opts.windProfile === false ? 0 : windProfileLevels(wind);
 
   const climbs: Climb[] = climbRuns.map((r) => ({
-    ...circleStats(F, r.a, r.b, windVec),
+    ...circleStats(F, r.a, r.b, field),
     best_30s_ms: bestWindow(F, r.a, r.b),
     per_circle: perCircle(F, r.a, r.b),
   }));
@@ -275,7 +289,7 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
   // ends near the height the log stops at.
   const landAlt = F[F.length - 1].alt;
   const legs: Leg[] = split.map((r, i) => {
-    const leg = analyseLeg(F, r.a, r.b, match.polar, windVec);
+    const leg = analyseLeg(F, r.a, r.b, match.polar, field);
     if (entry === null) {
       leg.kind = landed && F[r.b].alt < landAlt + 250 ? 'circuit' : 'cruise';
     } else if (r.a >= entry) {
@@ -336,6 +350,7 @@ export function analyse(text: string, opts: AnalyseOptions = {}): Analysis {
       working_band: workingBand,
     },
     wind,
+    wind_levels: windLevels,
     climbs,
     legs,
     polar: {

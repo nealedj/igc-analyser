@@ -197,12 +197,27 @@ or wave — check `wind` before calling it either.
 | `fromDeg` | number | Degrees true, the direction it blows from. |
 | `spreadMs` | number | Fastest per-climb estimate minus slowest. |
 | `unreliable` | boolean | **Set when the estimates disagree by more than 8 kt.** |
-| `perClimb[]` | array | `{ time, speedMs, fromDeg, circles }`. |
+| `levels` | integer | Distinct heights the wind profile rests on. **See below.** |
+| `perClimb[]` | array | `{ time, altM, speedMs, fromDeg, circles }`. |
 
 Wind comes from the drift of whole circles. `circles` on each estimate is how
 many it had to work with; below about 1.5 the glider was S-turning, not
 circling. **If `unreliable` is `true`, do not publish the wind without saying
 it is uncertain**, and do not build an argument on it.
+
+`altM` is the middle of the climb the estimate came from. Two estimates that
+disagree at different heights are a gradient rather than noise, which is part
+of why `unreliable` is a blunt flag: the wind is not the same at the bottom of
+the working band as at the top.
+
+`levels` is how many heights survived the filters used to build the profile -
+estimates within 150 m of each other count once, and estimates under 2.5 whole
+circles are left out. `levels >= 2` means every airspeed and airmass figure in
+this file used the wind at the height its fix was flown at, interpolated
+between those heights and held flat above the highest climb and below the
+lowest. `0` or `1` means there was nothing to interpolate and `speedMs` /
+`fromDeg` were used everywhere, so a leg well above or below the climbs was
+corrected with a wind that was not measured there.
 
 ### `climbs[]`
 
